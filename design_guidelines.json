@@ -1,0 +1,88 @@
+{
+  "theme": "Light",
+  "archetype": "4 (Swiss & High-Contrast - Technical Dashboard Variant)",
+  "language": "Turkish",
+  "currency": "£ GBP",
+  "design_philosophy": "Authority, Clarity, Truth. Dense data presentation with a 'Technical Control Room' aesthetic. Functional beauty with high-contrast structural elements and a single, authoritative accent color.",
+  "typography": {
+    "strategy": "Soft Utility Dashboard Pairing",
+    "heading_font": "Work Sans",
+    "body_font": "Inter",
+    "scales": {
+      "h1": "text-3xl font-semibold tracking-tight text-slate-900",
+      "h2": "text-2xl font-semibold tracking-tight text-slate-800",
+      "h3": "text-lg font-medium text-slate-800",
+      "kpi_value": "text-4xl font-light tracking-tighter text-slate-900",
+      "body": "text-sm text-slate-600",
+      "small_label": "text-xs font-bold tracking-[0.1em] uppercase text-slate-500"
+    }
+  },
+  "colors": {
+    "background": "#ffffff",
+    "surface": "#f8fafc",
+    "surface_hover": "#f1f5f9",
+    "primary_accent": "#0047AB", 
+    "primary_hover": "#003380",
+    "text_primary": "#0f172a",
+    "text_secondary": "#64748b",
+    "border": "#e2e8f0",
+    "success": "#10b981",
+    "warning": "#f59e0b",
+    "danger": "#ef4444"
+  },
+  "spacing_and_layout": {
+    "philosophy": "Grid Borders (The Technical Look). Dense data presentation with visible grid lines. Sharp edges.",
+    "sidebar": "w-64 fixed left-0 top-0 h-screen border-r border-slate-200 bg-slate-50 flex flex-col",
+    "main_content": "ml-64 p-8 min-h-screen bg-white",
+    "grid_system": "Bento Grid Protocol - Control Room Grid for dashboards. Tight gaps (gap-4 or gap-6). Every pixel utilized.",
+    "border_radius": "rounded-none or max rounded-sm (2px)",
+    "shadows": "Minimal. Use 1px borders instead of soft shadows to separate content. For hover states: slight lift (-translate-y-px) and shadow-sm."
+  },
+  "components": {
+    "buttons": "Flat, sharp edges. Primary: bg-blue-600 text-white hover:bg-blue-700 hover:text-white. Secondary: bg-white border border-slate-300 text-slate-700 hover:bg-slate-50.",
+    "cards": "border border-slate-200 bg-white p-5 rounded-sm. No shadow. Explicit text colors for all states.",
+    "tables": "Dense. text-sm. border-b border-slate-200 on rows. Header: text-xs uppercase tracking-wide bg-slate-50 text-slate-500 py-3 px-4.",
+    "inputs": "h-9 border-slate-300 rounded-sm focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 text-sm.",
+    "charts": "Shadcn charts (Recharts). Minimal axes, no grid lines. Tooltips with sharp edges and 1px border. Use Primary Accent (#0047AB) as main chart color.",
+    "toast": "Sonner. Bottom-right. Sharp edges, border border-slate-200.",
+    "modals": "Backdrop bg-slate-900/40 backdrop-blur-sm. Modal surface white, sharp edges, p-6, border border-slate-200."
+  },
+  "navigation": {
+    "menu_items": [
+      {"id": "dashboard", "label": "Dashboard", "icon": "SquaresFour"},
+      {"id": "products", "label": "Ürün Kontrolü", "icon": "Package"},
+      {"id": "production", "label": "Üretim Girişi", "icon": "Factory"},
+      {"id": "customers", "label": "Müşteriler", "icon": "Users"},
+      {"id": "sales", "label": "Günlük Satış", "icon": "ShoppingCart"},
+      {"id": "stock", "label": "Stok Durumu", "icon": "Stack"},
+      {"id": "reports", "label": "Raporlar", "icon": "ChartBar"},
+      {"id": "settings", "label": "Ayarlar", "icon": "Gear"}
+    ]
+  },
+  "images_and_icons": {
+    "icon_library": "@phosphor-icons/react",
+    "avatar_url": "https://images.unsplash.com/photo-1576558656222-ba66febe3dec?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MjJ8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBoZWFkc2hvdCUyMHBvcnRyYWl0fGVufDB8fHx8MTc3ODU5ODQzM3ww&ixlib=rb-4.1.0&q=85",
+    "logo_concept": "Phosphor Package Icon + 'StokTakip' text in Work Sans Bold (Tracking-tight)."
+  },
+  "data_formatting": {
+    "currency_symbol": "£",
+    "currency_format": "£1,250.00 (2 ondalık hane)",
+    "weight_format": "15.50 kg (2 ondalık hane)",
+    "date_format": "DD.MM.YYYY"
+  },
+  "testing": {
+    "rules": "All interactive and key informational elements MUST include a data-testid attribute (e.g., data-testid='sidebar-dashboard-link', data-testid='sales-submit-button')."
+  },
+  "instructions_to_main_agent": [
+    "DO NOT use generic purple or teal gradients. Strictly adhere to the Light Theme and the primary accent color (#0047AB).",
+    "Implement the 8 specified menu items in the sidebar using Turkish labels.",
+    "Dashboard MUST include these KPI cards: 'Toplam Ürün Sayısı', 'Toplam Stok Değeri', 'Bugünkü Satış', 'Aylık Satış'.",
+    "Dashboard MUST include alert sections for 'Minimum Stok Altındaki Ürünler' and 'Raf Ömrü Yaklaşan Ürünler'.",
+    "Dashboard MUST include 'En Çok Satan 5 Ürün' list and 'Son Üretim/Satış Hareketleri' feed.",
+    "In the Reports section, implement: Line chart (Satış trendi), Bar chart (Ürün bazlı satış, Üretim), Pie chart (Kategori dağılımı).",
+    "Ensure all tables support search, filter, sort, date range filtering, and Export to CSV/Excel functionality.",
+    "The Günlük Satış (Daily Sales) page must function like a POS (multi-product cart, customer select, payment status).",
+    "Implement role-based views if requested, but at minimum ensure the UI supports Admin, Personel, and Sadece-Rapor modes structurally.",
+    "Use Shadcn UI components extensively, overriding their default border-radius to `rounded-sm` or `rounded-none` to match the Technical Grid Borders aesthetic."
+  ]
+}
