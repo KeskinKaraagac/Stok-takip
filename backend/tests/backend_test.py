@@ -270,11 +270,15 @@ class TestDashboardReports:
         r = requests.get(f"{API}/dashboard/summary", headers=admin_headers)
         assert r.status_code == 200, r.text
         d = r.json()
+        # Iteration 5: removed 'expiring_products', renamed 'sales_trend' -> 'exit_trend'
         for key in ["total_products", "total_stock_value_cost", "today_sales", "month_sales",
-                    "low_stock_products", "expiring_products", "top_products",
-                    "recent_productions", "recent_sales", "sales_trend"]:
+                    "low_stock_products", "top_products",
+                    "recent_productions", "recent_sales", "exit_trend",
+                    "total_stock_weight", "today_quantity", "today_weight",
+                    "month_quantity", "month_weight", "category_value"]:
             assert key in d, f"Missing key {key}"
-        assert len(d["sales_trend"]) == 14
+        assert "expiring_products" not in d
+        assert len(d["exit_trend"]) == 14
 
     def test_report_stock(self, admin_headers):
         r = requests.get(f"{API}/reports/stock", headers=admin_headers)

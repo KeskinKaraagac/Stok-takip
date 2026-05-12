@@ -19,9 +19,9 @@ import { toast } from "sonner";
 
 const EMPTY = {
   name: "", code: "", category: "", unit: "adet",
-  unit_weight: 0, sale_price: 0, cost_price: 0,
-  current_stock: 0, min_stock: 0, shelf_life_days: 0,
-  production_date: "", expiry_date: "", active: true, notes: "",
+  unit_weight: 0, sale_price: 0,
+  current_stock: 0, min_stock: 0,
+  active: true, notes: "",
 };
 
 export default function Products() {
@@ -100,11 +100,9 @@ export default function Products() {
       { key: "code", label: "Kod" },
       { key: "category", label: "Kategori" },
       { key: "unit", label: "Birim" },
-      { key: "current_stock", label: "Stok", format: (v) => formatNumber(v, 2) },
-      { key: "min_stock", label: "Min Stok", format: (v) => formatNumber(v, 2) },
-      { key: "cost_price", label: "Maliyet", format: (v) => formatNumber(v, 2) },
+      { key: "current_stock", label: "Stok", format: (v) => formatNumber(v, 0) },
+      { key: "min_stock", label: "Min Stok", format: (v) => formatNumber(v, 0) },
       { key: "sale_price", label: "Satış Fiyatı", format: (v) => formatNumber(v, 2) },
-      { key: "expiry_date", label: "SKT", format: (v) => formatDate(v) },
       { key: "active", label: "Aktif", format: (v) => v ? "Evet" : "Hayır" },
     ]);
   };
@@ -156,20 +154,17 @@ export default function Products() {
               <th>Kategori</th>
               <th>Birim</th>
               <th>Stok</th>
-              <th>Maliyet</th>
               <th>Satış Fiyatı</th>
-              <th>SKT</th>
               <th>Durum</th>
               <th className="text-right">İşlem</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={10} className="text-center text-slate-400 py-8">Kayıt bulunamadı</td></tr>
+              <tr><td colSpan={8} className="text-center text-slate-400 py-8">Kayıt bulunamadı</td></tr>
             )}
             {filtered.map((p) => {
               const lowStock = Number(p.min_stock) > 0 && Number(p.current_stock) <= Number(p.min_stock);
-              const expiring = p.expiry_date && new Date(p.expiry_date) <= new Date(Date.now() + 7 * 86400000);
               return (
                 <tr key={p.id} data-testid={`product-row-${p.id}`}>
                   <td className="font-medium text-slate-900">{p.name}</td>
@@ -177,12 +172,10 @@ export default function Products() {
                   <td className="text-slate-600">{p.category || "-"}</td>
                   <td className="text-slate-600">{p.unit}</td>
                   <td className={`tabular ${lowStock ? "text-amber-600 font-semibold" : ""}`}>
-                    {formatNumber(p.current_stock, 2)}
+                    {formatNumber(p.current_stock, 0)}
                     {lowStock && <AlertTriangle className="inline w-3 h-3 ml-1" />}
                   </td>
-                  <td className="tabular">{formatCurrency(p.cost_price)}</td>
                   <td className="tabular">{formatCurrency(p.sale_price)}</td>
-                  <td className={`tabular ${expiring ? "text-red-600" : ""}`}>{formatDate(p.expiry_date)}</td>
                   <td>
                     {p.active ? (
                       <Badge variant="outline" className="rounded-sm border-emerald-200 bg-emerald-50 text-emerald-700">Aktif</Badge>
@@ -229,13 +222,24 @@ export default function Products() {
               </Select>
             </Field>
             <Field label="Birim Ağırlık (kg)"><Input type="number" step="0.01" value={form.unit_weight} onChange={(e) => setForm({ ...form, unit_weight: e.target.value })} className="rounded-sm" /></Field>
-            <Field label="Maliyet Fiyatı (£)"><Input type="number" step="0.01" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: e.target.value })} className="rounded-sm" /></Field>
             <Field label="Satış Fiyatı (£)"><Input type="number" step="0.01" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} className="rounded-sm" /></Field>
-            <Field label="Güncel Stok"><Input type="number" step="0.01" value={form.current_stock} onChange={(e) => setForm({ ...form, current_stock: e.target.value })} className="rounded-sm" /></Field>
-            <Field label="Min Stok Seviyesi"><Input type="number" step="0.01" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: e.target.value })} className="rounded-sm" /></Field>
-            <Field label="Raf Ömrü (gün)"><Input type="number" value={form.shelf_life_days} onChange={(e) => setForm({ ...form, shelf_life_days: e.target.value })} className="rounded-sm" /></Field>
-            <Field label="Üretim Tarihi"><Input type="date" value={form.production_date || ""} onChange={(e) => setForm({ ...form, production_date: e.target.value })} className="rounded-sm" /></Field>
-            <Field label="Son Tüketim Tarihi"><Input type="date" value={form.expiry_date || ""} onChange={(e) => setForm({ ...form, expiry_date: e.target.value })} className="rounded-sm" /></Field>
+            <Field label="Güncel Stok"><Input type="number" step="1" value={form.current_stock} onChange={(e) => setForm({ ...form, current_stock: e.target.value })} className="rounded-sm" /></Field>
+            <Field label="Min Stok Seviyesi"><Input type="number" step="1" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: e.target.value })} className="rounded-sm" /></Field>
+            {editing && user?.role === "admin" && (
+              <div className="sm:col-span-2 flex items-center gap-3 p-3 bg-slate-50 rounded-sm">
+                <input
+                  id="product-active-toggle"
+                  type="checkbox"
+                  checked={!!form.active}
+                  onChange={(e) => setForm({ ...form, active: e.target.checked })}
+                  className="w-4 h-4"
+                  data-testid="product-active-toggle"
+                />
+                <Label htmlFor="product-active-toggle" className="text-sm text-slate-700 cursor-pointer">
+                  Aktif {form.active ? "✓" : "(Pasif)"}
+                </Label>
+              </div>
+            )}
             <div className="sm:col-span-2">
               <Label className="text-xs uppercase tracking-wider text-slate-500">Notlar</Label>
               <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="rounded-sm mt-1" />

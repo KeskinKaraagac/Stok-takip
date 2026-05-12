@@ -9,12 +9,17 @@ export function formatCurrency(value) {
   })}`;
 }
 
-export function formatNumber(value, decimals = 2) {
+export function formatNumber(value, maxDecimals = 2) {
   const v = Number(value || 0);
   return v.toLocaleString("en-GB", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxDecimals,
   });
+}
+
+export function formatInt(value) {
+  const v = Math.round(Number(value || 0));
+  return v.toLocaleString("en-GB", { maximumFractionDigits: 0 });
 }
 
 export function formatWeight(value, unit = "kg") {

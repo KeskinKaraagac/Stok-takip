@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 5 validation: weight-focused dashboard/sales/reports, customer types (Cash & Carry / Retail / Shop), profile editor (PUT /api/auth/me), admin PUT /api/users/{id} (email+password), products without cost_price/dates, payment_status optional, sidebar rename Depo Çıkış, language switcher TR/EN. Created /app/backend/tests/test_iteration5.py with 17 pytest cases — ALL 17 PASS. Re-ran full regression (backend_test.py + test_new_features.py + test_company_profile.py + test_permissions_excel.py) — 82/82 PASS after updating dashboard test to new shape. Total 99/99 backend tests passing. Frontend smoke (admin login): Dashboard renders new KPIs (Toplam Stok kg / Bugünkü-BuAy Çıkış / Son 14 Gün Çıkış Trendi kg / Stok Mali Değer Dağılımı pie); /sales header says 'Depo Çıkış' with TOPLAM ADET / TOPLAM KG / MALİ DEĞER columns and NO payment-status column; /settings shows profile-name/email inputs + save-profile-btn + language-select; edit-user-* opens user-edit-dialog with email + password fields; language switch TR→EN flips sidebar to 'Dashboard / Product Control / Production Entry / Customers / Warehouse Exit / Stock / Reports / Settings' (verified 'Depo Çıkış' disappears and 'Warehouse Exit' appears).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Settings.jsx user-edit-dialog", "issue": "Role <Select> inside user edit dialog had no data-testid. Fixed by testing agent: added data-testid='user-edit-role' on the SelectTrigger (line 414).", "selector": "[data-testid='user-edit-role']", "priority": "LOW (was)"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Settings (English mode)", "issues": ["Translation coverage is partial. After switching to EN: sidebar + main section titles translate, but several still-Turkish strings remain in the UI: 'Yönetici' role badge text, role-select options ('Yönetici/Personel/Sadece Rapor'), table headers in 'Kullanıcı Yönetimi' (AD/E-POSTA/ROL/İZİN SAYISI/AKTİF/KAYIT/İŞLEM), 'Şirket Adı/Telefon/Vergi No/Web Sitesi/Adres' company-profile labels, 'Tüm yetkiler' chip, 'Şirket Bilgilerini Kaydet' button, button label 'Kaydet' in permissions dialog, sub-titles 'Kullanıcı Yönetimi' / 'Her kullanıcının modül bazlı yetkilerini ayrı ayrı düzenleyebilirsiniz'. Either move all these to TRANSLATIONS map or accept that only navigation/KPI labels translate."]},
+      {"screen": "Depo Çıkış (/sales)", "issues": ["Date range filters still use browser-native <input type='date'> (mm/dd/yyyy placeholder) instead of shadcn Calendar/Popover — pre-existing from iteration 2 & 3, still not addressed."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration5.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iteration5.xml",
+    "/app/test_reports/pytest/regression.xml"
+  ],
+  "action_items": [
+    "Expand LanguageContext.jsx TRANSLATIONS map to cover all UI strings on /settings (role badges, table headers, company-profile field labels, dialog button text). Currently only the menu + a few section titles translate.",
+    "(Optional) Replace remaining browser-native <input type='date'> on /sales date filters with shadcn Calendar/Popover for consistency.",
+    "DB cleanliness: tests leave behind test data (multiple test runs created several TEST_* customers / products / sales). Consider adding a `pytest --cleanup` or admin endpoint to drop TEST_ prefixed rows after CI."
+  ],
+  "critical_code_review_comments": [
+    "PUT /api/auth/me (SelfUpdateIn) correctly validates current_password via verify_password before allowing password change, returns Turkish error 'Mevcut şifre hatalı' (HTTP 400). Email uniqueness check excludes the same user via {id:{$ne:user.id}} — solid.",
+    "POST /api/sales now computes item.weight (kg-unit: weight=qty; other: weight=qty*unit_weight), populates total_weight / total_quantity on the sale doc. Legacy fallback in reports & dashboard (_item_weight, _sale_weight) handles old docs missing 'weight'.",
+    "Dashboard_summary: 'today_sales' filter uses string range {date: {$gte:today, $lte: today+T23:59:59}} — correct for ISO-prefixed timestamps; month_start uses replace(day=1).date().isoformat() — works.",
+    "Backend server.py is now 1674 lines — flagged in iterations 1-3. The split into routers has still not happened. Strongly recommend before iteration 6.",
+    "Reports/production: weekly_avg = total / max(1, days/7). When days < 7, divisor becomes 1 (since days/7 < 1, max with 1 = 1) → returns total. This means weekly average equals total for small ranges; UI should label this as 'weekly equivalent' or guard for small ranges.",
+    "PUT /api/users/{uid} now allows email & password changes — both validated. min password length 6 — same as registration. Good.",
+    "SaleIn.payment_status Optional[str]='' — sales without this field accepted, doc.payment_status saved as ''. Old PDF receipt code uses .get('payment_status') → status_map shows '-' fallback. Verified test_receipt_pdf still passes.",
+    "report_sales avg/weight aggregates: daily_avg_weight = total_weight / max(1, len(by_day)) — correct (uses count of distinct days with sales, not calendar days). Document this nuance in UI.",
+    "i18n: LanguageContext uses localStorage 'lang' default 'tr'. No SSR/initial-flash mitigation; brief Turkish-flash before en preference loads is possible on slow networks."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration5.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/frontend/src/pages/Settings.jsx"
+  ],
+  "success_rate": {"backend": "100% (17/17 new + 82/82 regression = 99/99)", "frontend": "100% on tested flows (Dashboard new KPIs, /sales rename + columns, /settings profile + language toggle + edit-user dialog)"},
+  "test_credentials": "admin@stoktakip.com / Admin123! (re-seeded each backend startup). Temp users created by iteration5 fixtures are cleaned up via module-scoped teardown. test_new_features and test_permissions_excel create their own throwaway accounts and cleanup.",
+  "seed_data_creation": "test_iteration5.py creates per-module: 2 base products (kg-unit & adet-unit), 1 customer, multiple TEST_ customers for customer_type parametrization, plus several short-lived users for self-profile & admin-update tests. All cleaned up in module fixture teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 5 endpoints validated: GET /api/dashboard/summary returns new shape (total_stock_weight / today_quantity / today_weight / month_quantity / month_weight / category_value[] / exit_trend[14] / top_products[].weight) and NO LONGER returns expiring_products or sales_trend. POST /api/sales now stamps each item with {weight, product_unit, unit_weight, product_category} and the sale doc with {total_weight, total_quantity}; payment_status optional defaults to ''. POST /api/products accepts payload without cost_price/shelf_life_days/production_date/expiry_date (defaults applied in Pydantic). Customer.customer_type accepts 'Cash & Carry' | 'Retail' | 'Shop' (plus legacy 'Bireysel'/'Kurumsal'). PUT /api/auth/me: requires current_password only when new_password provided; returns 400 'Mevcut şifre hatalı' on bad current, 400 on email clash. PUT /api/users/{id} now accepts email (uniqueness checked, 400 'Bu e-posta başka bir kullanıcıya ait' on clash) and password (sets bcrypt hash). Frontend data-testid: profile-name-input, profile-email-input, save-profile-btn, language-select (shadcn SelectTrigger — click & then click 'English'/'Türkçe' option), edit-user-{uid}, user-edit-dialog, user-edit-name, user-edit-email, user-edit-role (newly added by testing agent), user-edit-password, save-user-edit-btn. Sidebar entry for sales is now 'Depo Çıkış' (TR) / 'Warehouse Exit' (EN). Translation coverage is partial — see design_issues.",
+  "rca of the issue": "No critical issues found in this iteration. Minor: 1 missing data-testid on the role select within user-edit-dialog (fixed). The partial i18n coverage is design-level, not a functional bug — the language switch works correctly for the strings that ARE in the TRANSLATIONS map."
+}

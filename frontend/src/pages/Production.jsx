@@ -25,7 +25,7 @@ export default function Production() {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ date: todayISO(), product_id: "", quantity: "", unit: "adet", lot_number: "", cost: 0, description: "" });
+  const [form, setForm] = useState({ date: todayISO(), product_id: "", quantity: "", unit: "adet", lot_number: "", description: "" });
   const [confirmDel, setConfirmDel] = useState(null);
 
   const productMap = useMemo(() => Object.fromEntries(products.map((p) => [p.id, p])), [products]);
@@ -48,7 +48,7 @@ export default function Production() {
 
   const onProductChange = (id) => {
     const p = products.find((x) => x.id === id);
-    setForm({ ...form, product_id: id, unit: p?.unit || "adet", cost: p?.cost_price || 0 });
+    setForm({ ...form, product_id: id, unit: p?.unit || "adet" });
   };
 
   const submit = async () => {
@@ -58,11 +58,11 @@ export default function Production() {
       await api.post("/productions", {
         ...form,
         quantity: Number(form.quantity),
-        cost: Number(form.cost) || 0,
+        cost: 0,
       });
       toast.success("Üretim kaydedildi, stoğa eklendi");
       setOpen(false);
-      setForm({ date: todayISO(), product_id: "", quantity: "", unit: "adet", lot_number: "", cost: 0, description: "" });
+      setForm({ date: todayISO(), product_id: "", quantity: "", unit: "adet", lot_number: "", description: "" });
       load();
     } catch (e) { toast.error(formatApiError(e)); }
   };
@@ -169,19 +169,15 @@ export default function Production() {
             </div>
             <div>
               <Label className="text-xs uppercase tracking-wider text-slate-500">Miktar</Label>
-              <Input type="number" step="0.01" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="rounded-sm mt-1" data-testid="prod-quantity" />
+              <Input type="number" step="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="rounded-sm mt-1" data-testid="prod-quantity" />
             </div>
             <div>
               <Label className="text-xs uppercase tracking-wider text-slate-500">Birim</Label>
               <Input value={form.unit} disabled className="rounded-sm mt-1" />
             </div>
-            <div>
+            <div className="sm:col-span-2">
               <Label className="text-xs uppercase tracking-wider text-slate-500">Lot / Parti No</Label>
               <Input value={form.lot_number} onChange={(e) => setForm({ ...form, lot_number: e.target.value })} className="rounded-sm mt-1" data-testid="prod-lot" />
-            </div>
-            <div>
-              <Label className="text-xs uppercase tracking-wider text-slate-500">Üretim Maliyeti (£)</Label>
-              <Input type="number" step="0.01" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} className="rounded-sm mt-1" />
             </div>
             <div className="sm:col-span-2">
               <Label className="text-xs uppercase tracking-wider text-slate-500">Açıklama</Label>

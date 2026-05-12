@@ -14,18 +14,19 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCompany } from "../context/CompanyContext";
+import { useLanguage } from "../context/LanguageContext";
 import { useState } from "react";
 import { Toaster } from "sonner";
 
 const MENU = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, roles: ["admin", "personel", "rapor"] },
-  { to: "/products", label: "Ürün Kontrolü", icon: Package, roles: ["admin", "personel", "rapor"] },
-  { to: "/production", label: "Üretim Girişi", icon: Factory, roles: ["admin", "personel"] },
-  { to: "/customers", label: "Müşteriler", icon: Users, roles: ["admin", "personel", "rapor"] },
-  { to: "/sales", label: "Günlük Satış", icon: ShoppingCart, roles: ["admin", "personel"] },
-  { to: "/stock", label: "Stok Durumu", icon: Layers, roles: ["admin", "personel", "rapor"] },
-  { to: "/reports", label: "Raporlar", icon: BarChart3, roles: ["admin", "personel", "rapor"] },
-  { to: "/settings", label: "Ayarlar", icon: Settings, roles: ["admin"] },
+  { to: "/", key: "dashboard", icon: LayoutDashboard, end: true, roles: ["admin", "personel", "rapor"] },
+  { to: "/products", key: "products", icon: Package, roles: ["admin", "personel", "rapor"] },
+  { to: "/production", key: "production", icon: Factory, roles: ["admin", "personel"] },
+  { to: "/customers", key: "customers", icon: Users, roles: ["admin", "personel", "rapor"] },
+  { to: "/sales", key: "sales", icon: ShoppingCart, roles: ["admin", "personel"] },
+  { to: "/stock", key: "stock", icon: Layers, roles: ["admin", "personel", "rapor"] },
+  { to: "/reports", key: "reports", icon: BarChart3, roles: ["admin", "personel", "rapor"] },
+  { to: "/settings", key: "settings", icon: Settings, roles: ["admin"] },
 ];
 
 const ROLE_LABELS = {
@@ -37,6 +38,7 @@ const ROLE_LABELS = {
 export default function Layout() {
   const { user, logout } = useAuth();
   const { company, logoUrl } = useCompany();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -91,7 +93,7 @@ export default function Layout() {
                 to={m.to}
                 end={m.end}
                 onClick={() => setMobileOpen(false)}
-                data-testid={`sidebar-link-${m.label.toLowerCase().replace(/\s+/g, "-").replace(/ç|ü|ö|ı|ş|ğ/g, "")}`}
+                data-testid={`sidebar-link-${m.key}`}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-5 py-2.5 text-sm transition-colors border-l-2 ${
                     isActive
@@ -101,7 +103,7 @@ export default function Layout() {
                 }
               >
                 <Icon className="w-4 h-4" />
-                {m.label}
+                {t(m.key)}
               </NavLink>
             );
           })}
@@ -117,7 +119,7 @@ export default function Layout() {
             data-testid="logout-button"
             className="flex items-center gap-2 w-full text-sm text-slate-700 hover:text-[#0047AB] transition-colors"
           >
-            <LogOut className="w-4 h-4" /> Çıkış Yap
+            <LogOut className="w-4 h-4" /> {t("logout")}
           </button>
         </div>
       </aside>

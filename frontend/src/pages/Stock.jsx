@@ -102,23 +102,26 @@ export default function Stock() {
           <div className="border border-slate-200 rounded-sm overflow-x-auto bg-white">
             <table className="dense w-full">
               <thead>
-                <tr><th>Ürün</th><th>Kod</th><th>Birim</th><th>Toplam Giriş</th><th>Toplam Çıkış</th><th>Güncel Stok</th><th>Mali Değer (Maliyet)</th><th>Satış Değeri</th><th>Durum</th></tr>
+                <tr><th>Ürün</th><th>Kod</th><th>Kategori</th><th>Birim</th><th>Toplam Giriş</th><th>Toplam Çıkış</th><th>Güncel Stok</th><th>Stok Ağırlığı (kg)</th><th>Satış Değeri</th><th>Durum</th></tr>
               </thead>
               <tbody>
-                {products.length === 0 && <tr><td colSpan={9} className="text-center text-slate-400 py-8">Ürün yok</td></tr>}
+                {products.length === 0 && <tr><td colSpan={10} className="text-center text-slate-400 py-8">Ürün yok</td></tr>}
                 {products.map((p) => {
-                  const t = totals[p.id] || { inq: 0, outq: 0 };
+                  const tt = totals[p.id] || { inq: 0, outq: 0 };
                   const stock = Number(p.current_stock || 0);
                   const low = Number(p.min_stock) > 0 && stock <= Number(p.min_stock);
+                  const unit = (p.unit || "").toLowerCase();
+                  const stockKg = unit === "kg" ? stock : stock * Number(p.unit_weight || 0);
                   return (
                     <tr key={p.id}>
                       <td className="font-medium">{p.name}</td>
                       <td className="text-slate-600">{p.code}</td>
+                      <td className="text-slate-600">{p.category || "-"}</td>
                       <td>{p.unit}</td>
-                      <td className="tabular text-emerald-700">{formatNumber(t.inq, 2)}</td>
-                      <td className="tabular text-red-600">{formatNumber(t.outq, 2)}</td>
-                      <td className={`tabular font-semibold ${low ? "text-amber-600" : ""}`}>{formatNumber(stock, 2)}</td>
-                      <td className="tabular">{formatCurrency(stock * Number(p.cost_price))}</td>
+                      <td className="tabular text-emerald-700">{formatNumber(tt.inq, 0)}</td>
+                      <td className="tabular text-red-600">{formatNumber(tt.outq, 0)}</td>
+                      <td className={`tabular font-semibold ${low ? "text-amber-600" : ""}`}>{formatNumber(stock, 0)}</td>
+                      <td className="tabular">{formatNumber(stockKg, 2)} kg</td>
                       <td className="tabular">{formatCurrency(stock * Number(p.sale_price))}</td>
                       <td>
                         {low ? <span className="inline-flex items-center gap-1 text-amber-700 text-xs"><AlertTriangle className="w-3 h-3" /> Düşük Stok</span> : <span className="text-emerald-700 text-xs">Normal</span>}

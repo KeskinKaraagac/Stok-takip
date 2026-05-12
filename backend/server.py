@@ -305,7 +305,7 @@ class SaleIn(BaseModel):
     customer_id: str
     items: List[SaleItemIn]
     discount: float = 0.0
-    payment_status: Literal["odendi", "bekliyor", "kismi"] = "bekliyor"
+    payment_status: Optional[str] = ""
     description: Optional[str] = ""
 
 
@@ -425,6 +425,37 @@ async def me(user: dict = Depends(get_current_user)):
     out = dict(user)
     out["permissions"] = user_permissions(user)
     return out
+
+
+class SelfUpdateIn(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    current_password: Optional[str] = None
+    new_password: Optional[str] = Field(default=None, min_length=6)
+
+
+@api.put("/auth/me")
+async def update_me(payload: SelfUpdateIn, user: dict = Depends(get_current_user)):
+    update = {}
+    if payload.name is not None and payload.name.strip():
+        update["name"] = payload.name.strip()
+    if payload.email is not None:
+        em = payload.email.lower().strip()
+        clash = await db.users.find_one({"email": em, "id": {"$ne": user["id"]}})
+        if clash:
+            raise HTTPException(status_code=400, detail="Bu e-posta başka bir kullanıcıya ait")
+        update["email"] = em
+    if payload.new_password:
+        full = await db.users.find_one({"id": user["id"]})
+        if not full or not verify_password(payload.current_password or "", full.get("password_hash", "")):
+            raise HTTPException(status_code=400, detail="Mevcut şifre hatalı")
+        update["password_hash"] = hash_password(payload.new_password)
+    if update:
+        await db.users.update_one({"id": user["id"]}, {"$set": update})
+    u = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+    if u.get("permissions") is None:
+        u["permissions"] = default_permissions(u.get("role", ""))
+    return u
 
 
 @api.get("/permissions")
@@ -700,16 +731,27 @@ async def create_sale(payload: SaleIn, user: dict = Depends(require_permission("
 
     items_out = []
     gross = 0.0
+    total_weight = 0.0
     for it in payload.items:
+        p = products[it.product_id]
+        unit_w = float(p.get("unit_weight", 0) or 0)
+        unit = (p.get("unit") or "adet").lower()
+        # If product unit is kg, the quantity IS the weight; otherwise weight = qty * unit_weight
+        item_weight = float(it.quantity) if unit == "kg" else float(it.quantity) * unit_w
         line_total = float(it.quantity) * float(it.unit_price)
         gross += line_total
+        total_weight += item_weight
         items_out.append({
             "product_id": it.product_id,
-            "product_name": products[it.product_id]["name"],
+            "product_name": p["name"],
+            "product_category": p.get("category", ""),
+            "product_unit": p.get("unit", ""),
+            "unit_weight": unit_w,
             "quantity": float(it.quantity),
+            "weight": item_weight,
             "unit_price": float(it.unit_price),
             "line_total": line_total,
-            "cost_price": float(products[it.product_id].get("cost_price", 0)),
+            "cost_price": float(p.get("cost_price", 0)),
         })
     discount = float(payload.discount or 0)
     net = max(0.0, gross - discount)
@@ -723,7 +765,9 @@ async def create_sale(payload: SaleIn, user: dict = Depends(require_permission("
         "gross_total": gross,
         "discount": discount,
         "net_total": net,
-        "payment_status": payload.payment_status,
+        "total_weight": total_weight,
+        "total_quantity": sum(float(it.quantity) for it in payload.items),
+        "payment_status": payload.payment_status or "",
         "description": payload.description or "",
         "created_at": now_utc().isoformat(),
         "created_by": user["id"],
@@ -1237,7 +1281,16 @@ async def export_productions(start: Optional[str] = None, end: Optional[str] = N
 async def dashboard_summary(user: dict = Depends(get_current_user)):
     products = await db.products.find({"active": True}, {"_id": 0}).to_list(5000)
     total_products = len(products)
+
+    def _weight_of(p):
+        unit = (p.get("unit") or "").lower()
+        stock = float(p.get("current_stock", 0))
+        if unit == "kg":
+            return stock
+        return stock * float(p.get("unit_weight", 0) or 0)
+
     total_stock_units = sum(float(p.get("current_stock", 0)) for p in products)
+    total_stock_weight = sum(_weight_of(p) for p in products)
     total_stock_value_cost = sum(float(p.get("current_stock", 0)) * float(p.get("cost_price", 0)) for p in products)
     total_stock_value_sale = sum(float(p.get("current_stock", 0)) * float(p.get("sale_price", 0)) for p in products)
 
@@ -1246,28 +1299,45 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
 
     sales_today = await db.sales.find({"date": {"$gte": today, "$lte": today + "T23:59:59"}}, {"_id": 0}).to_list(5000)
     sales_month = await db.sales.find({"date": {"$gte": month_start}}, {"_id": 0}).to_list(5000)
+
+    def _sale_weight(s):
+        if "total_weight" in s and s.get("total_weight") is not None:
+            return float(s["total_weight"])
+        # legacy fallback
+        return sum(float(it.get("weight", 0) or 0) for it in s.get("items", []))
+
+    def _sale_qty(s):
+        if "total_quantity" in s and s.get("total_quantity") is not None:
+            return float(s["total_quantity"])
+        return sum(float(it.get("quantity", 0) or 0) for it in s.get("items", []))
+
     today_total = sum(float(s.get("net_total", 0)) for s in sales_today)
     month_total = sum(float(s.get("net_total", 0)) for s in sales_month)
+    today_qty = sum(_sale_qty(s) for s in sales_today)
+    today_weight = sum(_sale_weight(s) for s in sales_today)
+    month_qty = sum(_sale_qty(s) for s in sales_month)
+    month_weight = sum(_sale_weight(s) for s in sales_month)
 
     # Low stock products
     low_stock = [p for p in products if float(p.get("current_stock", 0)) <= float(p.get("min_stock", 0)) and float(p.get("min_stock", 0)) > 0]
 
-    # Shelf-life warning (expiring in next 7 days or expired)
-    soon = (now_utc() + timedelta(days=7)).date().isoformat()
-    expiring = []
+    # Category stock financial value (kept as one chart)
+    cat_value = {}
     for p in products:
-        ed = p.get("expiry_date")
-        if ed and ed <= soon:
-            expiring.append(p)
+        c = p.get("category") or "Diğer"
+        cat_value.setdefault(c, 0.0)
+        cat_value[c] += float(p.get("current_stock", 0)) * float(p.get("cost_price", 0))
+    category_value = [{"category": k, "value": v} for k, v in cat_value.items()]
 
-    # Top 5 selling products (all-time by quantity)
+    # Top 5 by quantity & weight
     all_sales = await db.sales.find({}, {"_id": 0}).to_list(10000)
     sold_map = {}
     for s in all_sales:
         for it in s.get("items", []):
             key = it["product_id"]
-            sold_map.setdefault(key, {"product_id": key, "product_name": it.get("product_name", ""), "quantity": 0.0, "revenue": 0.0})
+            sold_map.setdefault(key, {"product_id": key, "product_name": it.get("product_name", ""), "quantity": 0.0, "weight": 0.0, "revenue": 0.0})
             sold_map[key]["quantity"] += float(it.get("quantity", 0))
+            sold_map[key]["weight"] += float(it.get("weight", 0) or 0)
             sold_map[key]["revenue"] += float(it.get("line_total", 0))
     top5 = sorted(sold_map.values(), key=lambda x: x["quantity"], reverse=True)[:5]
 
@@ -1275,26 +1345,35 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
     recent_prod = await db.productions.find({}, {"_id": 0}).sort("created_at", -1).to_list(5)
     recent_sales = await db.sales.find({}, {"_id": 0}).sort("created_at", -1).to_list(5)
 
-    # 14-day sales trend
+    # 14-day exit trend (quantity + weight)
     trend = []
     for i in range(13, -1, -1):
         d = (now_utc().date() - timedelta(days=i)).isoformat()
         day_sales = [s for s in all_sales if (s.get("date", "") or "")[:10] == d]
-        trend.append({"date": d, "total": sum(float(s.get("net_total", 0)) for s in day_sales)})
+        trend.append({
+            "date": d,
+            "quantity": sum(_sale_qty(s) for s in day_sales),
+            "weight": sum(_sale_weight(s) for s in day_sales),
+        })
 
     return {
         "total_products": total_products,
         "total_stock_units": total_stock_units,
+        "total_stock_weight": total_stock_weight,
         "total_stock_value_cost": total_stock_value_cost,
         "total_stock_value_sale": total_stock_value_sale,
         "today_sales": today_total,
+        "today_quantity": today_qty,
+        "today_weight": today_weight,
         "month_sales": month_total,
+        "month_quantity": month_qty,
+        "month_weight": month_weight,
         "low_stock_products": low_stock,
-        "expiring_products": expiring,
+        "category_value": category_value,
         "top_products": top5,
         "recent_productions": recent_prod,
         "recent_sales": recent_sales,
-        "sales_trend": trend,
+        "exit_trend": trend,
     }
 
 
@@ -1307,13 +1386,18 @@ async def report_stock(user: dict = Depends(get_current_user)):
         stock = float(p.get("current_stock", 0))
         cost = float(p.get("cost_price", 0))
         sale = float(p.get("sale_price", 0))
+        unit = (p.get("unit") or "").lower()
+        unit_w = float(p.get("unit_weight", 0) or 0)
+        stock_weight = stock if unit == "kg" else stock * unit_w
         rows.append({
             "id": p["id"],
             "name": p["name"],
             "code": p["code"],
             "category": p.get("category", ""),
             "unit": p.get("unit", ""),
+            "unit_weight": unit_w,
             "current_stock": stock,
+            "stock_weight": stock_weight,
             "cost_price": cost,
             "sale_price": sale,
             "stock_value_cost": stock * cost,
@@ -1323,6 +1407,7 @@ async def report_stock(user: dict = Depends(get_current_user)):
         "rows": rows,
         "total_cost_value": sum(r["stock_value_cost"] for r in rows),
         "total_sale_value": sum(r["stock_value_sale"] for r in rows),
+        "total_stock_weight": sum(r["stock_weight"] for r in rows),
         "gross_profit_potential": sum(r["stock_value_sale"] - r["stock_value_cost"] for r in rows),
     }
 
@@ -1350,28 +1435,52 @@ async def report_production(start: Optional[str] = None, end: Optional[str] = No
         if end:
             q["date"]["$lte"] = end + "T23:59:59"
     prods = await db.productions.find(q, {"_id": 0}).to_list(10000)
+    products_all = await db.products.find({}, {"_id": 0}).to_list(5000)
+    pmap = {pp["id"]: pp for pp in products_all}
+
+    def _wt(prod_doc, qty):
+        p = pmap.get(prod_doc.get("product_id"))
+        if not p:
+            return 0.0
+        unit = (p.get("unit") or "").lower()
+        if unit == "kg":
+            return float(qty)
+        return float(qty) * float(p.get("unit_weight", 0) or 0)
+
     by_day = {}
     by_product = {}
     for p in prods:
         d = (p.get("date") or "")[:10]
-        by_day.setdefault(d, 0.0)
-        by_day[d] += float(p.get("quantity", 0))
+        qty = float(p.get("quantity", 0))
+        wt = _wt(p, qty)
+        by_day.setdefault(d, {"quantity": 0.0, "weight": 0.0})
+        by_day[d]["quantity"] += qty
+        by_day[d]["weight"] += wt
         pid = p["product_id"]
-        by_product.setdefault(pid, {"product_id": pid, "quantity": 0.0})
-        by_product[pid]["quantity"] += float(p.get("quantity", 0))
-    # Attach product names
-    pmap = {pp["id"]: pp["name"] for pp in await db.products.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(5000)}
+        by_product.setdefault(pid, {"product_id": pid, "quantity": 0.0, "weight": 0.0, "count": 0})
+        by_product[pid]["quantity"] += qty
+        by_product[pid]["weight"] += wt
+        by_product[pid]["count"] += 1
     for k in by_product:
-        by_product[k]["product_name"] = pmap.get(k, "Bilinmiyor")
-    total = sum(float(p.get("quantity", 0)) for p in prods)
+        by_product[k]["product_name"] = pmap.get(k, {}).get("name", "Bilinmiyor")
+        c = by_product[k]["count"] or 1
+        by_product[k]["avg_quantity"] = by_product[k]["quantity"] / c
+        by_product[k]["avg_weight"] = by_product[k]["weight"] / c
+
+    total_qty = sum(float(p.get("quantity", 0)) for p in prods)
+    total_weight = sum(_wt(p, float(p.get("quantity", 0))) for p in prods)
     days = max(1, len(by_day))
     return {
-        "by_day": [{"date": k, "quantity": v} for k, v in sorted(by_day.items())],
+        "by_day": [{"date": k, "quantity": v["quantity"], "weight": v["weight"]} for k, v in sorted(by_day.items())],
         "by_product": list(by_product.values()),
-        "total": total,
-        "daily_avg": total / days,
-        "weekly_avg": total / max(1, days / 7),
-        "monthly_avg": total / max(1, days / 30),
+        "total": total_qty,
+        "total_weight": total_weight,
+        "daily_avg": total_qty / days,
+        "daily_avg_weight": total_weight / days,
+        "weekly_avg": total_qty / max(1, days / 7),
+        "weekly_avg_weight": total_weight / max(1, days / 7),
+        "monthly_avg": total_qty / max(1, days / 30),
+        "monthly_avg_weight": total_weight / max(1, days / 30),
     }
 
 
@@ -1385,36 +1494,65 @@ async def report_sales(start: Optional[str] = None, end: Optional[str] = None, u
         if end:
             q["date"]["$lte"] = end + "T23:59:59"
     sales = await db.sales.find(q, {"_id": 0}).to_list(10000)
+    products_all = await db.products.find({}, {"_id": 0}).to_list(5000)
+    pmap = {pp["id"]: pp for pp in products_all}
+
+    def _item_weight(it):
+        if it.get("weight") is not None:
+            return float(it.get("weight", 0) or 0)
+        p = pmap.get(it.get("product_id"))
+        if not p:
+            return 0.0
+        unit = (p.get("unit") or "").lower()
+        if unit == "kg":
+            return float(it.get("quantity", 0))
+        return float(it.get("quantity", 0)) * float(p.get("unit_weight", 0) or 0)
+
     by_day = {}
     by_product = {}
     by_customer = {}
     for s in sales:
         d = (s.get("date") or "")[:10]
-        by_day.setdefault(d, {"date": d, "total": 0.0, "count": 0})
+        sale_qty = sum(float(it.get("quantity", 0)) for it in s.get("items", []))
+        sale_wt = sum(_item_weight(it) for it in s.get("items", []))
+        by_day.setdefault(d, {"date": d, "total": 0.0, "quantity": 0.0, "weight": 0.0, "count": 0})
         by_day[d]["total"] += float(s.get("net_total", 0))
+        by_day[d]["quantity"] += sale_qty
+        by_day[d]["weight"] += sale_wt
         by_day[d]["count"] += 1
         cid = s.get("customer_id")
-        by_customer.setdefault(cid, {"customer_id": cid, "customer_name": s.get("customer_name", ""), "revenue": 0.0, "count": 0})
+        by_customer.setdefault(cid, {"customer_id": cid, "customer_name": s.get("customer_name", ""), "revenue": 0.0, "quantity": 0.0, "weight": 0.0, "count": 0})
         by_customer[cid]["revenue"] += float(s.get("net_total", 0))
+        by_customer[cid]["quantity"] += sale_qty
+        by_customer[cid]["weight"] += sale_wt
         by_customer[cid]["count"] += 1
         for it in s.get("items", []):
             pid = it["product_id"]
-            by_product.setdefault(pid, {"product_id": pid, "product_name": it.get("product_name", ""), "quantity": 0.0, "revenue": 0.0, "cost": 0.0})
+            by_product.setdefault(pid, {"product_id": pid, "product_name": it.get("product_name", ""), "quantity": 0.0, "weight": 0.0, "revenue": 0.0, "cost": 0.0})
             by_product[pid]["quantity"] += float(it.get("quantity", 0))
+            by_product[pid]["weight"] += _item_weight(it)
             by_product[pid]["revenue"] += float(it.get("line_total", 0))
             by_product[pid]["cost"] += float(it.get("quantity", 0)) * float(it.get("cost_price", 0))
     total = sum(float(s.get("net_total", 0)) for s in sales)
+    total_qty = sum(b["quantity"] for b in by_day.values())
+    total_weight = sum(b["weight"] for b in by_day.values())
     days = max(1, len(by_day))
     cogs = sum(p["cost"] for p in by_product.values())
     return {
         "by_day": sorted(by_day.values(), key=lambda x: x["date"]),
-        "by_product": sorted(by_product.values(), key=lambda x: x["revenue"], reverse=True),
-        "by_customer": sorted(by_customer.values(), key=lambda x: x["revenue"], reverse=True),
+        "by_product": sorted(by_product.values(), key=lambda x: x["weight"], reverse=True),
+        "by_customer": sorted(by_customer.values(), key=lambda x: x["weight"], reverse=True),
         "total": total,
+        "total_quantity": total_qty,
+        "total_weight": total_weight,
         "count": len(sales),
         "daily_avg": total / days,
+        "daily_avg_quantity": total_qty / days,
+        "daily_avg_weight": total_weight / days,
         "weekly_avg": total / max(1, days / 7),
+        "weekly_avg_weight": total_weight / max(1, days / 7),
         "monthly_avg": total / max(1, days / 30),
+        "monthly_avg_weight": total_weight / max(1, days / 30),
         "gross_profit": total - cogs,
         "cogs": cogs,
     }
@@ -1432,7 +1570,15 @@ async def list_users(user: dict = Depends(require_permission("users.manage"))):
 
 @api.put("/users/{uid}")
 async def update_user(uid: str, payload: dict, user: dict = Depends(require_permission("users.manage"))):
-    allowed = {k: v for k, v in payload.items() if k in ["name", "role", "active", "permissions"]}
+    allowed = {k: v for k, v in payload.items() if k in ["name", "email", "role", "active", "permissions"]}
+    if "email" in allowed:
+        em = (allowed["email"] or "").lower().strip()
+        if not em:
+            raise HTTPException(status_code=400, detail="E-posta boş olamaz")
+        clash = await db.users.find_one({"email": em, "id": {"$ne": uid}})
+        if clash:
+            raise HTTPException(status_code=400, detail="Bu e-posta başka bir kullanıcıya ait")
+        allowed["email"] = em
     if "role" in allowed and allowed["role"] not in ALL_ROLES:
         raise HTTPException(status_code=400, detail="Geçersiz rol")
     if "permissions" in allowed:
@@ -1441,6 +1587,10 @@ async def update_user(uid: str, payload: dict, user: dict = Depends(require_perm
         bad = [p for p in allowed["permissions"] if p not in ALL_PERMISSIONS]
         if bad:
             raise HTTPException(status_code=400, detail=f"Geçersiz izinler: {', '.join(bad)}")
+    if "password" in payload and payload["password"]:
+        if len(payload["password"]) < 6:
+            raise HTTPException(status_code=400, detail="Şifre en az 6 karakter olmalı")
+        allowed["password_hash"] = hash_password(payload["password"])
     res = await db.users.update_one({"id": uid}, {"$set": allowed})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")

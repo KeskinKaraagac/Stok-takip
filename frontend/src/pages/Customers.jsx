@@ -17,7 +17,7 @@ import PageHeader from "../components/PageHeader";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
 
-const EMPTY = { name: "", phone: "", email: "", address: "", tax_no: "", customer_type: "Bireysel", active: true, notes: "" };
+const EMPTY = { name: "", phone: "", email: "", address: "", tax_no: "", customer_type: "Retail", active: true, notes: "" };
 
 export default function Customers() {
   const { user } = useAuth();
@@ -150,8 +150,9 @@ export default function Customers() {
               <Select value={form.customer_type} onValueChange={(v) => setForm({ ...form, customer_type: v })}>
                 <SelectTrigger className="rounded-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Bireysel">Bireysel</SelectItem>
-                  <SelectItem value="Kurumsal">Kurumsal</SelectItem>
+                  <SelectItem value="Cash & Carry">Cash & Carry</SelectItem>
+                  <SelectItem value="Retail">Retail</SelectItem>
+                  <SelectItem value="Shop">Shop</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
@@ -159,6 +160,21 @@ export default function Customers() {
             <Field label="E-posta"><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="rounded-sm" /></Field>
             <Field label="Vergi No"><Input value={form.tax_no} onChange={(e) => setForm({ ...form, tax_no: e.target.value })} className="rounded-sm" /></Field>
             <Field label="Adres"><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="rounded-sm" /></Field>
+            {editing && user?.role === "admin" && (
+              <div className="sm:col-span-2 flex items-center gap-3 p-3 bg-slate-50 rounded-sm">
+                <input
+                  id="customer-active-toggle"
+                  type="checkbox"
+                  checked={!!form.active}
+                  onChange={(e) => setForm({ ...form, active: e.target.checked })}
+                  className="w-4 h-4"
+                  data-testid="customer-active-toggle"
+                />
+                <Label htmlFor="customer-active-toggle" className="text-sm text-slate-700 cursor-pointer">
+                  Aktif {form.active ? "✓" : "(Pasif)"}
+                </Label>
+              </div>
+            )}
             <div className="sm:col-span-2">
               <Label className="text-xs uppercase tracking-wider text-slate-500">Notlar</Label>
               <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="rounded-sm mt-1" />

@@ -17,13 +17,15 @@ import { formatApiError, formatDateTime } from "../lib/format";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../context/AuthContext";
 import { useCompany } from "../context/CompanyContext";
+import { useLanguage } from "../context/LanguageContext";
 import { toast } from "sonner";
 
 const ROLE_LABEL = { admin: "Yönetici", personel: "Personel", rapor: "Sadece Rapor" };
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, refresh: refreshAuth } = useAuth();
   const { company, logoUrl, reload: reloadCompany } = useCompany();
+  const { t, lang, setLang } = useLanguage();
   const [users, setUsers] = useState([]);
   const [confirmDel, setConfirmDel] = useState(null);
   const [permGroups, setPermGroups] = useState([]);
@@ -33,6 +35,14 @@ export default function Settings() {
   const [companySaving, setCompanySaving] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const fileInputRef = useRef(null);
+
+  // Profile editor
+  const [profileForm, setProfileForm] = useState({ name: "", email: "", current_password: "", new_password: "" });
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  // User editor (admin editing other users)
+  const [userEdit, setUserEdit] = useState(null);
+  const [userForm, setUserForm] = useState({ name: "", email: "", role: "", password: "" });
 
   useEffect(() => {
     setCompanyForm({
@@ -44,6 +54,10 @@ export default function Settings() {
       website: company.website || "",
     });
   }, [company]);
+
+  useEffect(() => {
+    if (user) setProfileForm({ name: user.name || "", email: user.email || "", current_password: "", new_password: "" });
+  }, [user]);
 
   const load = async () => {
     try {
@@ -137,6 +151,37 @@ export default function Settings() {
     } catch (e) { toast.error(formatApiError(e)); }
   };
 
+  const saveProfile = async () => {
+    setProfileSaving(true);
+    try {
+      const body = { name: profileForm.name, email: profileForm.email };
+      if (profileForm.new_password) {
+        body.current_password = profileForm.current_password;
+        body.new_password = profileForm.new_password;
+      }
+      await api.put("/auth/me", body);
+      toast.success("Profil güncellendi");
+      setProfileForm({ ...profileForm, current_password: "", new_password: "" });
+      await refreshAuth();
+    } catch (e) { toast.error(formatApiError(e)); }
+    finally { setProfileSaving(false); }
+  };
+
+  const openUserEdit = (u) => {
+    setUserEdit(u);
+    setUserForm({ name: u.name || "", email: u.email || "", role: u.role, password: "" });
+  };
+  const saveUserEdit = async () => {
+    try {
+      const body = { name: userForm.name, email: userForm.email, role: userForm.role };
+      if (userForm.password) body.password = userForm.password;
+      await api.put(`/users/${userEdit.id}`, body);
+      toast.success("Kullanıcı güncellendi");
+      setUserEdit(null);
+      load();
+    } catch (e) { toast.error(formatApiError(e)); }
+  };
+
   return (
     <div data-testid="settings-page">
       <PageHeader title="Ayarlar" subtitle="Şirket profili, kullanıcılar ve sistem yönetimi" />
@@ -205,22 +250,48 @@ export default function Settings() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         <div className="border border-slate-200 p-5 rounded-sm">
-          <h3 className="text-lg font-display font-medium mb-4">Profil Bilgileri</h3>
-          <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className="text-slate-500">Ad Soyad</dt><dd className="text-slate-900">{user?.name}</dd>
-            <dt className="text-slate-500">E-posta</dt><dd className="text-slate-900">{user?.email}</dd>
-            <dt className="text-slate-500">Rol</dt><dd><Badge className="rounded-sm bg-[#0047AB] text-white">{ROLE_LABEL[user?.role]}</Badge></dd>
-            <dt className="text-slate-500">Kayıt Tarihi</dt><dd className="text-slate-900">{formatDateTime(user?.created_at)}</dd>
-          </dl>
+          <h3 className="text-lg font-display font-medium mb-4">{t("profile_info")}</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("name")}</Label>
+              <Input value={profileForm.name} onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })} className="rounded-sm mt-1" data-testid="profile-name-input" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("email")}</Label>
+              <Input value={profileForm.email} onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })} className="rounded-sm mt-1" data-testid="profile-email-input" />
+            </div>
+            <div className="sm:col-span-2">
+              <div className="text-xs uppercase tracking-wider text-slate-500 mb-2">{t("change_password")} ({t("no").toLowerCase()})</div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input type="password" placeholder={t("current_password")} value={profileForm.current_password} onChange={(e) => setProfileForm({ ...profileForm, current_password: e.target.value })} className="rounded-sm" />
+                <Input type="password" placeholder={t("new_password")} value={profileForm.new_password} onChange={(e) => setProfileForm({ ...profileForm, new_password: e.target.value })} className="rounded-sm" />
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span>{t("role")}: <Badge className="rounded-sm bg-[#0047AB] text-white ml-1">{ROLE_LABEL[user?.role]}</Badge></span>
+            <Button onClick={saveProfile} disabled={profileSaving} size="sm" className="bg-[#0047AB] hover:bg-[#003380] rounded-sm" data-testid="save-profile-btn">
+              {profileSaving ? "..." : t("save")}
+            </Button>
+          </div>
         </div>
         <div className="border border-slate-200 p-5 rounded-sm">
-          <h3 className="text-lg font-display font-medium mb-4">Uygulama Ayarları</h3>
-          <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className="text-slate-500">Para Birimi</dt><dd className="text-slate-900">£ GBP</dd>
-            <dt className="text-slate-500">Tarih Formatı</dt><dd className="text-slate-900">DD.MM.YYYY</dd>
-            <dt className="text-slate-500">Dil</dt><dd className="text-slate-900">Türkçe</dd>
-            <dt className="text-slate-500">Tema</dt><dd className="text-slate-900">Açık</dd>
+          <h3 className="text-lg font-display font-medium mb-4">{t("app_settings")}</h3>
+          <dl className="grid grid-cols-2 gap-2 text-sm mb-4">
+            <dt className="text-slate-500">{t("currency")}</dt><dd className="text-slate-900">£ GBP</dd>
+            <dt className="text-slate-500">{t("date_format")}</dt><dd className="text-slate-900">DD.MM.YYYY</dd>
+            <dt className="text-slate-500">{t("theme")}</dt><dd className="text-slate-900">Light</dd>
           </dl>
+          <div className="pt-3 border-t border-slate-200">
+            <Label className="text-xs uppercase tracking-wider text-slate-500">{t("language")}</Label>
+            <Select value={lang} onValueChange={setLang}>
+              <SelectTrigger className="rounded-sm mt-1" data-testid="language-select"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="tr">Türkçe</SelectItem>
+                <SelectItem value="en">English</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -258,13 +329,16 @@ export default function Settings() {
                 </td>
                 <td>{formatDateTime(u.created_at)}</td>
                 <td className="text-right whitespace-nowrap">
+                  {u.id !== user?.id && (
+                    <Button variant="outline" size="sm" className="rounded-sm mr-2" onClick={() => openUserEdit(u)} data-testid={`edit-user-${u.id}`}>{t("edit")}</Button>
+                  )}
                   {u.role !== "admin" && (
                     <Button variant="outline" size="sm" className="rounded-sm mr-2" onClick={() => openPerm(u)} data-testid={`edit-perms-${u.id}`}>
-                      <KeyRound className="w-3.5 h-3.5 mr-1" /> İzinler
+                      <KeyRound className="w-3.5 h-3.5 mr-1" /> {t("permissions")}
                     </Button>
                   )}
                   {u.id !== user?.id && (
-                    <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setConfirmDel(u)} data-testid={`delete-user-${u.id}`}>Sil</Button>
+                    <Button variant="outline" size="sm" className="rounded-sm" onClick={() => setConfirmDel(u)} data-testid={`delete-user-${u.id}`}>{t("delete")}</Button>
                   )}
                 </td>
               </tr>
@@ -318,6 +392,41 @@ export default function Settings() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setPermDialog(null)} className="rounded-sm">İptal</Button>
             <Button onClick={savePerms} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm" data-testid="save-perms-btn">Kaydet</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!userEdit} onOpenChange={(o) => !o && setUserEdit(null)}>
+        <DialogContent className="rounded-sm max-w-md" data-testid="user-edit-dialog">
+          <DialogHeader><DialogTitle>{t("edit")} — {userEdit?.email}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("name")}</Label>
+              <Input value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} className="rounded-sm mt-1" data-testid="user-edit-name" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("email")}</Label>
+              <Input value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} className="rounded-sm mt-1" data-testid="user-edit-email" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("role")}</Label>
+              <Select value={userForm.role} onValueChange={(v) => setUserForm({ ...userForm, role: v })}>
+                <SelectTrigger className="rounded-sm mt-1" data-testid="user-edit-role"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Yönetici</SelectItem>
+                  <SelectItem value="personel">Personel</SelectItem>
+                  <SelectItem value="rapor">Sadece Rapor</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("new_password")} ({t("no").toLowerCase()})</Label>
+              <Input type="password" placeholder="••••••" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} className="rounded-sm mt-1" data-testid="user-edit-password" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUserEdit(null)} className="rounded-sm">{t("cancel")}</Button>
+            <Button onClick={saveUserEdit} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm" data-testid="save-user-edit-btn">{t("save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
