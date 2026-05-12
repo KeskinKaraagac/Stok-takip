@@ -13,9 +13,9 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useCompany } from "../context/CompanyContext";
 import { useState } from "react";
 import { Toaster } from "sonner";
-import Logo from "./Logo";
 
 const MENU = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, roles: ["admin", "personel", "rapor"] },
@@ -36,6 +36,7 @@ const ROLE_LABELS = {
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const { company, logoUrl } = useCompany();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -52,7 +53,10 @@ export default function Layout() {
 
       {/* Mobile top bar */}
       <div className="lg:hidden flex items-center justify-between border-b border-slate-200 px-4 h-14 bg-white sticky top-0 z-30">
-        <Logo size={32} subtitle={null} />
+        <div className="flex items-center gap-2">
+          <img src={logoUrl} alt={company.name} className="w-8 h-8 object-contain" />
+          <span className="font-display font-semibold tracking-tight text-slate-900">{company.name}</span>
+        </div>
         <button
           onClick={() => setMobileOpen((v) => !v)}
           className="p-2 text-slate-600 hover:bg-slate-100 rounded-sm"
@@ -71,9 +75,9 @@ export default function Layout() {
         data-testid="sidebar"
       >
         <div className="px-5 h-16 flex items-center gap-3 border-b border-slate-200 bg-white">
-          <img src="/logo.jpg" alt="StokTakip" className="w-10 h-10 object-contain" data-testid="sidebar-logo" />
-          <div className="leading-tight">
-            <div className="font-display text-base font-bold text-slate-900 tracking-tight">StokTakip</div>
+          <img src={logoUrl} alt={company.name} className="w-10 h-10 object-contain" data-testid="sidebar-logo" />
+          <div className="leading-tight min-w-0">
+            <div className="font-display text-base font-bold text-slate-900 tracking-tight truncate">{company.name}</div>
             <div className="text-[10px] uppercase tracking-[0.15em] text-slate-500 mt-1">Üretim & Satış</div>
           </div>
         </div>

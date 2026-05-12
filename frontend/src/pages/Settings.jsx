@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
-import { ShieldCheck, KeyRound } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ShieldCheck, KeyRound, Upload, Trash2, Building2 } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
 import { Badge } from "../components/ui/badge";
@@ -13,17 +16,34 @@ import api from "../lib/api";
 import { formatApiError, formatDateTime } from "../lib/format";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../context/AuthContext";
+import { useCompany } from "../context/CompanyContext";
 import { toast } from "sonner";
 
 const ROLE_LABEL = { admin: "Yönetici", personel: "Personel", rapor: "Sadece Rapor" };
 
 export default function Settings() {
   const { user } = useAuth();
+  const { company, logoUrl, reload: reloadCompany } = useCompany();
   const [users, setUsers] = useState([]);
   const [confirmDel, setConfirmDel] = useState(null);
   const [permGroups, setPermGroups] = useState([]);
-  const [permDialog, setPermDialog] = useState(null); // user being edited
+  const [permDialog, setPermDialog] = useState(null);
   const [permSet, setPermSet] = useState(new Set());
+  const [companyForm, setCompanyForm] = useState({ name: "", contact_phone: "", contact_email: "", address: "", tax_no: "", website: "" });
+  const [companySaving, setCompanySaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    setCompanyForm({
+      name: company.name || "",
+      contact_phone: company.contact_phone || "",
+      contact_email: company.contact_email || "",
+      address: company.address || "",
+      tax_no: company.tax_no || "",
+      website: company.website || "",
+    });
+  }, [company]);
 
   const load = async () => {
     try {
@@ -79,9 +99,109 @@ export default function Settings() {
     } catch (e) { toast.error(formatApiError(e)); }
   };
 
+  const saveCompany = async () => {
+    if (!companyForm.name.trim()) { toast.error("Şirket adı zorunlu"); return; }
+    setCompanySaving(true);
+    try {
+      await api.put("/company", companyForm);
+      toast.success("Şirket bilgileri güncellendi");
+      await reloadCompany();
+    } catch (e) { toast.error(formatApiError(e)); }
+    finally { setCompanySaving(false); }
+  };
+
+  const uploadLogo = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { toast.error("Logo en fazla 2 MB olabilir"); return; }
+    if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) { toast.error("Sadece JPG, PNG, WEBP veya GIF"); return; }
+    setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      await api.post("/company/logo", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      toast.success("Logo güncellendi");
+      await reloadCompany();
+    } catch (err) { toast.error(formatApiError(err)); }
+    finally {
+      setLogoUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const removeLogo = async () => {
+    try {
+      await api.delete("/company/logo");
+      toast.success("Logo kaldırıldı");
+      await reloadCompany();
+    } catch (e) { toast.error(formatApiError(e)); }
+  };
+
   return (
     <div data-testid="settings-page">
-      <PageHeader title="Ayarlar" subtitle="Sistem ayarları ve kullanıcı yetki yönetimi" />
+      <PageHeader title="Ayarlar" subtitle="Şirket profili, kullanıcılar ve sistem yönetimi" />
+
+      <div className="border border-slate-200 rounded-sm bg-white mb-6" data-testid="company-profile-card">
+        <div className="p-5 border-b border-slate-200 flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-[#0047AB]" />
+          <h3 className="text-lg font-display font-medium">Şirket Profili</h3>
+          <span className="text-xs text-slate-500 ml-auto">PDF fişler ve raporlar için kullanılır</span>
+        </div>
+        <div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Logo */}
+          <div className="lg:col-span-1">
+            <Label className="text-xs uppercase tracking-wider text-slate-500">Logo</Label>
+            <div className="mt-2 border border-slate-200 rounded-sm p-4 flex flex-col items-center gap-3">
+              <img src={logoUrl} alt={company.name} className="w-32 h-32 object-contain bg-slate-50 p-2 rounded-sm border border-slate-100" data-testid="company-logo-preview" />
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={uploadLogo} className="hidden" data-testid="company-logo-input" />
+              <div className="flex gap-2 w-full">
+                <Button variant="outline" className="flex-1 rounded-sm" onClick={() => fileInputRef.current?.click()} disabled={logoUploading} data-testid="upload-logo-btn">
+                  <Upload className="w-3.5 h-3.5 mr-2" /> {logoUploading ? "Yükleniyor..." : "Yükle"}
+                </Button>
+                {company.has_logo && (
+                  <Button variant="outline" className="rounded-sm" onClick={removeLogo} data-testid="remove-logo-btn">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 text-center">JPG, PNG, WEBP, GIF • Maks. 2 MB</p>
+            </div>
+          </div>
+
+          {/* Form */}
+          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <Label className="text-xs uppercase tracking-wider text-slate-500">Şirket Adı *</Label>
+              <Input value={companyForm.name} onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })} className="rounded-sm mt-1" data-testid="company-name-input" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">Telefon</Label>
+              <Input value={companyForm.contact_phone} onChange={(e) => setCompanyForm({ ...companyForm, contact_phone: e.target.value })} className="rounded-sm mt-1" placeholder="+44 20 1234 5678" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">E-posta</Label>
+              <Input value={companyForm.contact_email} onChange={(e) => setCompanyForm({ ...companyForm, contact_email: e.target.value })} className="rounded-sm mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">Vergi No</Label>
+              <Input value={companyForm.tax_no} onChange={(e) => setCompanyForm({ ...companyForm, tax_no: e.target.value })} className="rounded-sm mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">Web Sitesi</Label>
+              <Input value={companyForm.website} onChange={(e) => setCompanyForm({ ...companyForm, website: e.target.value })} className="rounded-sm mt-1" placeholder="https://..." />
+            </div>
+            <div className="sm:col-span-2">
+              <Label className="text-xs uppercase tracking-wider text-slate-500">Adres</Label>
+              <Textarea value={companyForm.address} onChange={(e) => setCompanyForm({ ...companyForm, address: e.target.value })} className="rounded-sm mt-1" rows={2} />
+            </div>
+            <div className="sm:col-span-2 flex justify-end">
+              <Button onClick={saveCompany} disabled={companySaving} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm" data-testid="save-company-btn">
+                {companySaving ? "Kaydediliyor..." : "Şirket Bilgilerini Kaydet"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         <div className="border border-slate-200 p-5 rounded-sm">

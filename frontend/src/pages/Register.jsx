@@ -4,11 +4,13 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { useAuth } from "../context/AuthContext";
+import { useCompany } from "../context/CompanyContext";
 import { toast, Toaster } from "sonner";
 import { formatApiError } from "../lib/format";
 
 export default function Register() {
   const { register } = useAuth();
+  const { company, logoUrl } = useCompany();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [loading, setLoading] = useState(false);
@@ -32,8 +34,8 @@ export default function Register() {
       <Toaster position="bottom-right" richColors />
       <div className="w-full max-w-md bg-white border border-slate-200 p-8 rounded-sm">
         <div className="flex flex-col items-center text-center mb-6">
-          <img src="/logo.jpg" alt="StokTakip" className="w-24 h-24 object-contain mb-3" />
-          <h1 className="font-display text-2xl font-bold text-slate-900 tracking-tight">StokTakip</h1>
+          <img src={logoUrl} alt={company.name} className="w-24 h-24 object-contain mb-3" />
+          <h1 className="font-display text-2xl font-bold text-slate-900 tracking-tight">{company.name}</h1>
           <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mt-1">Üretim & Satış Yönetimi</p>
         </div>
         <h2 className="text-2xl font-display font-semibold text-slate-900 mb-1">Kayıt Ol</h2>

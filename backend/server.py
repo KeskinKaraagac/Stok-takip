@@ -10,12 +10,13 @@ import uuid
 import secrets
 import logging
 import bcrypt
+import requests
 import jwt as pyjwt
 from datetime import datetime, timezone, timedelta, date
 from typing import List, Optional, Literal
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query, UploadFile, File
+from fastapi.responses import StreamingResponse, Response as FastResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
@@ -122,6 +123,74 @@ def user_permissions(user: dict):
     if perms is None:
         return default_permissions(user.get("role", ""))
     return perms
+
+
+# ----- Object Storage Helpers (Emergent) -----
+STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+APP_STORAGE_NAME = os.environ.get("APP_STORAGE_NAME", "stoktakip")
+_storage_key: Optional[str] = None
+
+
+def init_storage() -> Optional[str]:
+    global _storage_key
+    if _storage_key:
+        return _storage_key
+    em_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not em_key:
+        logger.warning("EMERGENT_LLM_KEY missing; storage disabled")
+        return None
+    try:
+        resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": em_key}, timeout=30)
+        resp.raise_for_status()
+        _storage_key = resp.json()["storage_key"]
+        logger.info("Object storage initialized")
+        return _storage_key
+    except Exception as e:
+        logger.error(f"Storage init failed: {e}")
+        return None
+
+
+def storage_put(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    if not key:
+        raise HTTPException(status_code=500, detail="Storage kullanılamıyor")
+    resp = requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key, "Content-Type": content_type},
+        data=data, timeout=120,
+    )
+    if resp.status_code == 403:
+        # key expired -> re-init once
+        global _storage_key
+        _storage_key = None
+        key = init_storage()
+        if not key:
+            raise HTTPException(status_code=500, detail="Storage yetkisi alınamadı")
+        resp = requests.put(
+            f"{STORAGE_URL}/objects/{path}",
+            headers={"X-Storage-Key": key, "Content-Type": content_type},
+            data=data, timeout=120,
+        )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def storage_get(path: str):
+    key = init_storage()
+    if not key:
+        raise HTTPException(status_code=500, detail="Storage kullanılamıyor")
+    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    if resp.status_code == 403:
+        global _storage_key
+        _storage_key = None
+        key = init_storage()
+        if not key:
+            raise HTTPException(status_code=500, detail="Storage yetkisi alınamadı")
+        resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    if resp.status_code == 404:
+        return None, None
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
 
 # ----- Helpers -----
@@ -689,6 +758,9 @@ async def sale_receipt_pdf(sid: str, user: dict = Depends(get_current_user)):
     if not sale:
         raise HTTPException(status_code=404, detail="Satış bulunamadı")
 
+    company = await _get_company()
+    company_name = company.get("name") or "StokTakip"
+
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A5, topMargin=12 * mm, bottomMargin=12 * mm, leftMargin=12 * mm, rightMargin=12 * mm)
     styles = getSampleStyleSheet()
@@ -696,23 +768,52 @@ async def sale_receipt_pdf(sid: str, user: dict = Depends(get_current_user)):
     small = ParagraphStyle("small", parent=styles["Normal"], fontSize=8, textColor=colors.HexColor("#64748b"))
 
     story = []
-    # Header: logo + title (side by side)
-    logo_path = str(ROOT_DIR.parent / "frontend" / "public" / "logo.jpg")
+    # Header: logo + company name
+    logo_bytes_io = None
+    if company.get("logo_path"):
+        try:
+            content, _ = storage_get(company["logo_path"])
+            if content:
+                logo_bytes_io = io.BytesIO(content)
+        except Exception as e:
+            logger.warning(f"Logo fetch failed: {e}")
+    if logo_bytes_io is None:
+        static_path = ROOT_DIR.parent / "frontend" / "public" / "logo.jpg"
+        if static_path.exists():
+            logo_bytes_io = io.BytesIO(static_path.read_bytes())
+
     try:
-        logo_img = RLImage(logo_path, width=18 * mm, height=18 * mm)
-        header_tbl = Table(
-            [[logo_img, Paragraph("StokTakip<br/><font size=8 color='#64748b'>SATIŞ FİŞİ</font>", h1)]],
-            colWidths=[22 * mm, 90 * mm],
-        )
-        header_tbl.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
-        story.append(header_tbl)
+        if logo_bytes_io:
+            logo_img = RLImage(logo_bytes_io, width=18 * mm, height=18 * mm)
+            header_tbl = Table(
+                [[logo_img, Paragraph(f"{company_name}<br/><font size=8 color='#64748b'>SATIŞ FİŞİ</font>", h1)]],
+                colWidths=[22 * mm, 90 * mm],
+            )
+            header_tbl.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            story.append(header_tbl)
+        else:
+            story.append(Paragraph(company_name, h1))
+            story.append(Paragraph("SATIŞ FİŞİ", small))
     except Exception:
-        story.append(Paragraph("StokTakip", h1))
+        story.append(Paragraph(company_name, h1))
         story.append(Paragraph("SATIŞ FİŞİ", small))
+
+    # Company contact line
+    contact_bits = []
+    if company.get("address"):
+        contact_bits.append(company["address"])
+    if company.get("contact_phone"):
+        contact_bits.append("Tel: " + company["contact_phone"])
+    if company.get("contact_email"):
+        contact_bits.append(company["contact_email"])
+    if company.get("tax_no"):
+        contact_bits.append("Vergi No: " + company["tax_no"])
+    if contact_bits:
+        story.append(Paragraph(" • ".join(contact_bits), small))
     story.append(Spacer(1, 8))
 
     sale_date = (sale.get("date") or "")[:10]
@@ -787,7 +888,7 @@ async def sale_receipt_pdf(sid: str, user: dict = Depends(get_current_user)):
         story.append(Paragraph(f"<i>Açıklama: {sale['description']}</i>", small))
 
     story.append(Spacer(1, 16))
-    story.append(Paragraph(f"Bu fiş StokTakip tarafından {now_utc().strftime('%d.%m.%Y %H:%M')} UTC tarihinde oluşturulmuştur.", small))
+    story.append(Paragraph(f"Bu fiş {company_name} tarafından {now_utc().strftime('%d.%m.%Y %H:%M')} UTC tarihinde oluşturulmuştur.", small))
 
     doc.build(story)
     buf.seek(0)
@@ -864,6 +965,116 @@ async def adjust_stock(payload: StockAdjustIn, user: dict = Depends(require_perm
         "description": payload.description or "",
     })
     return {"ok": True, "previous_stock": old, "new_stock": new}
+
+
+# ===== COMPANY PROFILE =====
+class CompanyIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    contact_phone: Optional[str] = ""
+    contact_email: Optional[str] = ""
+    address: Optional[str] = ""
+    tax_no: Optional[str] = ""
+    website: Optional[str] = ""
+
+
+COMPANY_DOC_ID = "company_profile"
+
+
+def _empty_company():
+    return {
+        "id": COMPANY_DOC_ID,
+        "name": "StokTakip",
+        "contact_phone": "",
+        "contact_email": "",
+        "address": "",
+        "tax_no": "",
+        "website": "",
+        "logo_path": None,
+        "logo_ext": None,
+        "logo_updated_at": None,
+        "updated_at": now_utc().isoformat(),
+    }
+
+
+async def _get_company():
+    doc = await db.company.find_one({"id": COMPANY_DOC_ID}, {"_id": 0})
+    if not doc:
+        doc = _empty_company()
+        await db.company.insert_one(doc.copy())
+    return doc
+
+
+@api.get("/company")
+async def get_company():
+    """Public — used by login page too."""
+    doc = await _get_company()
+    return {
+        "name": doc.get("name", "StokTakip"),
+        "contact_phone": doc.get("contact_phone", ""),
+        "contact_email": doc.get("contact_email", ""),
+        "address": doc.get("address", ""),
+        "tax_no": doc.get("tax_no", ""),
+        "website": doc.get("website", ""),
+        "has_logo": bool(doc.get("logo_path")),
+        "logo_updated_at": doc.get("logo_updated_at"),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
+@api.put("/company")
+async def update_company(payload: CompanyIn, user: dict = Depends(require_roles(ROLE_ADMIN))):
+    update = payload.model_dump()
+    update["updated_at"] = now_utc().isoformat()
+    await db.company.update_one({"id": COMPANY_DOC_ID}, {"$set": update}, upsert=True)
+    return await get_company()
+
+
+_ALLOWED_LOGO_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+_EXT_BY_TYPE = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}
+
+
+@api.post("/company/logo")
+async def upload_company_logo(file: UploadFile = File(...), user: dict = Depends(require_roles(ROLE_ADMIN))):
+    ctype = (file.content_type or "").lower()
+    if ctype not in _ALLOWED_LOGO_TYPES:
+        raise HTTPException(status_code=400, detail="Sadece JPG, PNG, WEBP veya GIF yüklenebilir")
+    data = await file.read()
+    if len(data) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Logo en fazla 2 MB olabilir")
+    if len(data) < 32:
+        raise HTTPException(status_code=400, detail="Geçersiz dosya")
+    ext = _EXT_BY_TYPE.get(ctype, "bin")
+    path = f"{APP_STORAGE_NAME}/company/logo-{uuid.uuid4()}.{ext}"
+    result = storage_put(path, data, ctype)
+    now = now_utc().isoformat()
+    await db.company.update_one(
+        {"id": COMPANY_DOC_ID},
+        {"$set": {"logo_path": result["path"], "logo_ext": ext, "logo_content_type": ctype, "logo_updated_at": now, "updated_at": now}},
+        upsert=True,
+    )
+    return await get_company()
+
+
+@api.get("/company/logo")
+async def get_company_logo(v: Optional[str] = None):
+    """Public — serves the uploaded logo so it can be embedded as <img src> without auth."""
+    doc = await db.company.find_one({"id": COMPANY_DOC_ID}, {"_id": 0})
+    if not doc or not doc.get("logo_path"):
+        raise HTTPException(status_code=404, detail="Logo yüklenmemiş")
+    content, ctype = storage_get(doc["logo_path"])
+    if content is None:
+        raise HTTPException(status_code=404, detail="Logo bulunamadı")
+    return FastResponse(content=content, media_type=ctype or doc.get("logo_content_type") or "image/jpeg", headers={"Cache-Control": "public, max-age=300"})
+
+
+@api.delete("/company/logo")
+async def remove_company_logo(user: dict = Depends(require_roles(ROLE_ADMIN))):
+    now = now_utc().isoformat()
+    await db.company.update_one(
+        {"id": COMPANY_DOC_ID},
+        {"$set": {"logo_path": None, "logo_ext": None, "logo_content_type": None, "logo_updated_at": None, "updated_at": now}},
+    )
+    return await get_company()
 
 
 # ===== EXCEL EXPORT =====
@@ -1271,6 +1482,10 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     try:
+        init_storage()
+    except Exception as e:
+        logger.warning(f"Storage init at startup: {e}")
+    try:
         await db.users.create_index("email", unique=True)
         await db.users.create_index("id", unique=True)
         await db.products.create_index("id", unique=True)
@@ -1279,6 +1494,7 @@ async def startup_event():
         await db.productions.create_index("id", unique=True)
         await db.sales.create_index("id", unique=True)
         await db.stock_movements.create_index("id", unique=True)
+        await db.company.create_index("id", unique=True)
     except Exception as e:
         logger.warning(f"Index creation: {e}")
 
