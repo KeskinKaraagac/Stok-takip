@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Wrench, AlertTriangle } from "lucide-react";
+import { Wrench, AlertTriangle, FileSpreadsheet } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import api from "../lib/api";
 import { formatCurrency, formatNumber, formatDateTime, formatApiError } from "../lib/format";
+import { hasPermission, downloadXlsx } from "../lib/permissions";
 import PageHeader from "../components/PageHeader";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
@@ -72,11 +73,23 @@ export default function Stock() {
       <PageHeader
         title="Stok Durumu"
         subtitle="Güncel stoklar ve hareket geçmişi"
-        actions={canAdjust ? (
-          <Button onClick={() => setOpen(true)} data-testid="adjust-stock-btn" className="bg-[#0047AB] hover:bg-[#003380] rounded-sm">
-            <Wrench className="w-4 h-4 mr-2" /> Manuel Düzeltme
-          </Button>
-        ) : null}
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => downloadXlsx("/export/stock.xlsx", "stok-raporu.xlsx").catch((e) => toast.error(formatApiError(e)))}
+              data-testid="export-stock-xlsx"
+              className="rounded-sm"
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-2" /> Excel
+            </Button>
+            {canAdjust && (
+              <Button onClick={() => setOpen(true)} data-testid="adjust-stock-btn" className="bg-[#0047AB] hover:bg-[#003380] rounded-sm">
+                <Wrench className="w-4 h-4 mr-2" /> Manuel Düzeltme
+              </Button>
+            )}
+          </>
+        }
       />
 
       <Tabs defaultValue="status">

@@ -12,6 +12,7 @@ import {
 import { Badge } from "../components/ui/badge";
 import api from "../lib/api";
 import { formatCurrency, formatDate, formatApiError } from "../lib/format";
+import { hasPermission } from "../lib/permissions";
 import PageHeader from "../components/PageHeader";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
@@ -20,8 +21,9 @@ const EMPTY = { name: "", phone: "", email: "", address: "", tax_no: "", custome
 
 export default function Customers() {
   const { user } = useAuth();
-  const canEdit = ["admin", "personel"].includes(user?.role);
-  const canDelete = user?.role === "admin";
+  const canCreate = hasPermission(user, "customers.create");
+  const canEdit = hasPermission(user, "customers.edit");
+  const canDelete = hasPermission(user, "customers.delete");
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState("");
   const [type, setType] = useState("all");
@@ -83,7 +85,7 @@ export default function Customers() {
       <PageHeader
         title="Müşteriler"
         subtitle="Müşteri bilgileri ve geçmiş satışlar"
-        actions={canEdit ? (
+        actions={canCreate ? (
           <Button onClick={openCreate} data-testid="add-customer-btn" className="bg-[#0047AB] hover:bg-[#003380] rounded-sm">
             <Plus className="w-4 h-4 mr-2" /> Yeni Müşteri
           </Button>

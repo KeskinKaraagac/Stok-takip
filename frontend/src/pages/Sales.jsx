@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, ShoppingCart, X, FileDown } from "lucide-react";
+import { Plus, Trash2, ShoppingCart, X, FileDown, FileSpreadsheet } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -9,10 +9,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "../components/ui/badge";
 import api from "../lib/api";
 import { formatCurrency, formatNumber, formatDate, formatApiError, todayISO } from "../lib/format";
+import { hasPermission, downloadXlsx } from "../lib/permissions";
+import { useAuth } from "../context/AuthContext";
 import PageHeader from "../components/PageHeader";
 import { toast } from "sonner";
 
 export default function Sales() {
+  const { user } = useAuth();
+  const canCreate = hasPermission(user, "sales.create");
+  const canDelete = hasPermission(user, "sales.delete");
   const [sales, setSales] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -127,9 +132,21 @@ export default function Sales() {
         title="Günlük Satış"
         subtitle="POS tarzı satış kaydı — stoktan otomatik düşülür"
         actions={
-          <Button onClick={() => setOpen(true)} data-testid="new-sale-btn" className="bg-[#0047AB] hover:bg-[#003380] rounded-sm">
-            <Plus className="w-4 h-4 mr-2" /> Yeni Satış
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={() => downloadXlsx("/export/sales.xlsx", "satislar.xlsx", { ...(start ? { start } : {}), ...(end ? { end } : {}) }).catch((e) => toast.error(formatApiError(e)))}
+              data-testid="export-sales-xlsx"
+              className="rounded-sm"
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-2" /> Excel
+            </Button>
+            {canCreate && (
+              <Button onClick={() => setOpen(true)} data-testid="new-sale-btn" className="bg-[#0047AB] hover:bg-[#003380] rounded-sm">
+                <Plus className="w-4 h-4 mr-2" /> Yeni Satış
+              </Button>
+            )}
+          </>
         }
       />
 

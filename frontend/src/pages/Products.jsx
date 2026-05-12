@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Plus, Search, Download, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Search, Download, FileSpreadsheet, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -12,6 +12,7 @@ import {
 import { Badge } from "../components/ui/badge";
 import api from "../lib/api";
 import { formatCurrency, formatNumber, formatDate, formatApiError, exportCSV } from "../lib/format";
+import { hasPermission, downloadXlsx } from "../lib/permissions";
 import { useAuth } from "../context/AuthContext";
 import PageHeader from "../components/PageHeader";
 import { toast } from "sonner";
@@ -25,8 +26,9 @@ const EMPTY = {
 
 export default function Products() {
   const { user } = useAuth();
-  const canEdit = ["admin", "personel"].includes(user?.role);
-  const canDelete = user?.role === "admin";
+  const canCreate = hasPermission(user, "products.create");
+  const canEdit = hasPermission(user, "products.edit");
+  const canDelete = hasPermission(user, "products.delete");
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
@@ -117,7 +119,10 @@ export default function Products() {
             <Button variant="outline" onClick={exportExcel} data-testid="export-products" className="rounded-sm">
               <Download className="w-4 h-4 mr-2" /> CSV
             </Button>
-            {canEdit && (
+            <Button variant="outline" onClick={() => downloadXlsx("/export/products.xlsx", "urunler.xlsx").catch((e) => toast.error(formatApiError(e)))} data-testid="export-products-xlsx" className="rounded-sm">
+              <FileSpreadsheet className="w-4 h-4 mr-2" /> Excel
+            </Button>
+            {canCreate && (
               <Button onClick={openCreate} data-testid="add-product-btn" className="bg-[#0047AB] hover:bg-[#003380] rounded-sm">
                 <Plus className="w-4 h-4 mr-2" /> Yeni Ürün
               </Button>

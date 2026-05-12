@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, FileSpreadsheet } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -9,6 +9,7 @@ import {
 } from "recharts";
 import api from "../lib/api";
 import { formatCurrency, formatNumber, formatDate, formatApiError, exportCSV } from "../lib/format";
+import { downloadXlsx } from "../lib/permissions";
 import PageHeader from "../components/PageHeader";
 import { toast } from "sonner";
 
@@ -73,9 +74,12 @@ export default function Reports() {
         <TabsContent value="stock" className="mt-4">
           {stock && (
             <>
-              <div className="flex justify-end mb-3">
+              <div className="flex justify-end gap-2 mb-3">
                 <Button variant="outline" onClick={exportStock} className="rounded-sm" data-testid="export-stock-report">
                   <Download className="w-4 h-4 mr-2" /> CSV İndir
+                </Button>
+                <Button variant="outline" onClick={() => downloadXlsx("/export/stock.xlsx", "stok-raporu.xlsx").catch((e) => toast.error(formatApiError(e)))} className="rounded-sm" data-testid="export-stock-report-xlsx">
+                  <FileSpreadsheet className="w-4 h-4 mr-2" /> Excel İndir
                 </Button>
               </div>
               <div className="border border-slate-200 rounded-sm overflow-x-auto bg-white">

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, FileSpreadsheet } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -11,13 +11,15 @@ import {
 } from "../components/ui/alert-dialog";
 import api from "../lib/api";
 import { formatNumber, formatDate, formatApiError, todayISO } from "../lib/format";
+import { hasPermission, downloadXlsx } from "../lib/permissions";
 import PageHeader from "../components/PageHeader";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
 
 export default function Production() {
   const { user } = useAuth();
-  const canDelete = user?.role === "admin";
+  const canCreate = hasPermission(user, "productions.create");
+  const canDelete = hasPermission(user, "productions.delete");
   const [products, setProducts] = useState([]);
   const [productions, setProductions] = useState([]);
   const [start, setStart] = useState("");
@@ -80,9 +82,21 @@ export default function Production() {
         title="Üretim Girişi"
         subtitle="Üretim kayıtları stoğa otomatik eklenir"
         actions={
-          <Button onClick={() => setOpen(true)} data-testid="add-production-btn" className="bg-[#0047AB] hover:bg-[#003380] rounded-sm">
-            <Plus className="w-4 h-4 mr-2" /> Üretim Kaydı
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={() => downloadXlsx("/export/productions.xlsx", "uretim.xlsx", { ...(start ? { start } : {}), ...(end ? { end } : {}) }).catch((e) => toast.error(formatApiError(e)))}
+              data-testid="export-productions-xlsx"
+              className="rounded-sm"
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-2" /> Excel
+            </Button>
+            {canCreate && (
+              <Button onClick={() => setOpen(true)} data-testid="add-production-btn" className="bg-[#0047AB] hover:bg-[#003380] rounded-sm">
+                <Plus className="w-4 h-4 mr-2" /> Üretim Kaydı
+              </Button>
+            )}
+          </>
         }
       />
 

@@ -26,6 +26,10 @@ from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
 
 # ----- Mongo Setup -----
 mongo_url = os.environ["MONGO_URL"]
@@ -46,6 +50,78 @@ ROLE_STAFF = "personel"
 ROLE_VIEWER = "rapor"
 ALL_ROLES = [ROLE_ADMIN, ROLE_STAFF, ROLE_VIEWER]
 WRITE_ROLES = [ROLE_ADMIN, ROLE_STAFF]
+
+# Granular permission keys
+ALL_PERMISSIONS = [
+    "products.view", "products.create", "products.edit", "products.delete",
+    "customers.view", "customers.create", "customers.edit", "customers.delete",
+    "productions.view", "productions.create", "productions.delete",
+    "sales.view", "sales.create", "sales.delete",
+    "stock.view", "stock.adjust",
+    "reports.view",
+    "users.manage",
+]
+
+PERMISSION_GROUPS = [
+    {"key": "products", "label": "Ürün Kontrolü", "actions": [
+        ("products.view", "Görüntüleme"),
+        ("products.create", "Ekleme"),
+        ("products.edit", "Düzenleme"),
+        ("products.delete", "Silme/Pasif"),
+    ]},
+    {"key": "customers", "label": "Müşteriler", "actions": [
+        ("customers.view", "Görüntüleme"),
+        ("customers.create", "Ekleme"),
+        ("customers.edit", "Düzenleme"),
+        ("customers.delete", "Silme/Pasif"),
+    ]},
+    {"key": "productions", "label": "Üretim Girişi", "actions": [
+        ("productions.view", "Görüntüleme"),
+        ("productions.create", "Ekleme"),
+        ("productions.delete", "Silme"),
+    ]},
+    {"key": "sales", "label": "Günlük Satış", "actions": [
+        ("sales.view", "Görüntüleme"),
+        ("sales.create", "Satış Yapma"),
+        ("sales.delete", "Silme/İptal"),
+    ]},
+    {"key": "stock", "label": "Stok", "actions": [
+        ("stock.view", "Görüntüleme"),
+        ("stock.adjust", "Manuel Düzeltme"),
+    ]},
+    {"key": "reports", "label": "Raporlar", "actions": [
+        ("reports.view", "Görüntüleme"),
+    ]},
+    {"key": "users", "label": "Kullanıcılar", "actions": [
+        ("users.manage", "Kullanıcı Yönetimi"),
+    ]},
+]
+
+
+def default_permissions(role: str):
+    if role == ROLE_ADMIN:
+        return list(ALL_PERMISSIONS)
+    if role == ROLE_VIEWER:
+        return ["products.view", "customers.view", "productions.view", "sales.view", "stock.view", "reports.view"]
+    if role == ROLE_STAFF:
+        return [
+            "products.view", "products.create", "products.edit",
+            "customers.view", "customers.create", "customers.edit",
+            "productions.view", "productions.create",
+            "sales.view", "sales.create",
+            "stock.view", "stock.adjust",
+            "reports.view",
+        ]
+    return []
+
+
+def user_permissions(user: dict):
+    if user.get("role") == ROLE_ADMIN:
+        return list(ALL_PERMISSIONS)
+    perms = user.get("permissions")
+    if perms is None:
+        return default_permissions(user.get("role", ""))
+    return perms
 
 
 # ----- Helpers -----
@@ -202,6 +278,19 @@ def require_roles(*roles):
     return dep
 
 
+def require_permission(perm: str):
+    async def dep(user: dict = Depends(get_current_user)):
+        if user.get("role") == ROLE_ADMIN:
+            return user
+        perms = user.get("permissions")
+        if perms is None:
+            perms = default_permissions(user.get("role", ""))
+        if perm not in perms:
+            raise HTTPException(status_code=403, detail=f"Yetkisiz erişim ({perm})")
+        return user
+    return dep
+
+
 # ----- Cookie helper -----
 def set_auth_cookies(response: Response, access: str, refresh: str):
     response.set_cookie("access_token", access, httponly=True, secure=False, samesite="lax", max_age=60 * 60 * 24, path="/")
@@ -227,6 +316,7 @@ async def register(payload: RegisterIn, response: Response):
         "name": payload.name,
         "role": role,
         "active": True,
+        "permissions": default_permissions(role),
         "password_hash": hash_password(payload.password),
         "created_at": now_utc().isoformat(),
     }
@@ -263,7 +353,14 @@ async def logout(response: Response):
 
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
-    return user
+    out = dict(user)
+    out["permissions"] = user_permissions(user)
+    return out
+
+
+@api.get("/permissions")
+async def list_permissions(user: dict = Depends(get_current_user)):
+    return {"all": ALL_PERMISSIONS, "groups": PERMISSION_GROUPS}
 
 
 class ForgotPasswordIn(BaseModel):
@@ -326,7 +423,7 @@ async def list_products(active_only: bool = False, user: dict = Depends(get_curr
 
 
 @api.post("/products")
-async def create_product(payload: ProductIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+async def create_product(payload: ProductIn, user: dict = Depends(require_permission("products.create"))):
     exists = await db.products.find_one({"code": payload.code})
     if exists:
         raise HTTPException(status_code=400, detail="Bu ürün kodu zaten mevcut")
@@ -353,7 +450,7 @@ async def create_product(payload: ProductIn, user: dict = Depends(require_roles(
 
 
 @api.put("/products/{pid}")
-async def update_product(pid: str, payload: ProductIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+async def update_product(pid: str, payload: ProductIn, user: dict = Depends(require_permission("products.edit"))):
     existing = await db.products.find_one({"id": pid}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Ürün bulunamadı")
@@ -381,7 +478,7 @@ async def update_product(pid: str, payload: ProductIn, user: dict = Depends(requ
 
 
 @api.delete("/products/{pid}")
-async def soft_delete_product(pid: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
+async def soft_delete_product(pid: str, user: dict = Depends(require_permission("products.delete"))):
     res = await db.products.update_one({"id": pid}, {"$set": {"active": False, "updated_at": now_utc().isoformat()}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Ürün bulunamadı")
@@ -431,7 +528,7 @@ async def create_production(payload: ProductionIn, user: dict = Depends(require_
 
 
 @api.delete("/productions/{pid}")
-async def delete_production(pid: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
+async def delete_production(pid: str, user: dict = Depends(require_permission("productions.delete"))):
     prod = await db.productions.find_one({"id": pid}, {"_id": 0})
     if not prod:
         raise HTTPException(status_code=404, detail="Üretim kaydı bulunamadı")
@@ -475,7 +572,7 @@ async def get_customer(cid: str, user: dict = Depends(get_current_user)):
 
 
 @api.post("/customers")
-async def create_customer(payload: CustomerIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+async def create_customer(payload: CustomerIn, user: dict = Depends(require_permission("customers.create"))):
     doc = payload.model_dump()
     doc.update({"id": str(uuid.uuid4()), "created_at": now_utc().isoformat()})
     await db.customers.insert_one(doc.copy())
@@ -484,7 +581,7 @@ async def create_customer(payload: CustomerIn, user: dict = Depends(require_role
 
 
 @api.put("/customers/{cid}")
-async def update_customer(cid: str, payload: CustomerIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+async def update_customer(cid: str, payload: CustomerIn, user: dict = Depends(require_permission("customers.edit"))):
     res = await db.customers.update_one({"id": cid}, {"$set": payload.model_dump()})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Müşteri bulunamadı")
@@ -492,7 +589,7 @@ async def update_customer(cid: str, payload: CustomerIn, user: dict = Depends(re
 
 
 @api.delete("/customers/{cid}")
-async def delete_customer(cid: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
+async def delete_customer(cid: str, user: dict = Depends(require_permission("customers.delete"))):
     res = await db.customers.update_one({"id": cid}, {"$set": {"active": False}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Müşteri bulunamadı")
@@ -516,7 +613,7 @@ async def list_sales(start: Optional[str] = None, end: Optional[str] = None, cus
 
 
 @api.post("/sales")
-async def create_sale(payload: SaleIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+async def create_sale(payload: SaleIn, user: dict = Depends(require_permission("sales.create"))):
     if not payload.items:
         raise HTTPException(status_code=400, detail="Satış için en az bir ürün gerekli")
     # Validate stock for each item
@@ -684,7 +781,7 @@ async def sale_receipt_pdf(sid: str, user: dict = Depends(get_current_user)):
 
 
 @api.delete("/sales/{sid}")
-async def delete_sale(sid: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
+async def delete_sale(sid: str, user: dict = Depends(require_permission("sales.delete"))):
     sale = await db.sales.find_one({"id": sid}, {"_id": 0})
     if not sale:
         raise HTTPException(status_code=404, detail="Satış bulunamadı")
@@ -728,7 +825,7 @@ async def list_movements(product_id: Optional[str] = None, start: Optional[str] 
 
 
 @api.post("/stock/adjust")
-async def adjust_stock(payload: StockAdjustIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+async def adjust_stock(payload: StockAdjustIn, user: dict = Depends(require_permission("stock.adjust"))):
     product = await db.products.find_one({"id": payload.product_id}, {"_id": 0})
     if not product:
         raise HTTPException(status_code=404, detail="Ürün bulunamadı")
@@ -752,6 +849,161 @@ async def adjust_stock(payload: StockAdjustIn, user: dict = Depends(require_role
         "description": payload.description or "",
     })
     return {"ok": True, "previous_stock": old, "new_stock": new}
+
+
+# ===== EXCEL EXPORT =====
+HEADER_FILL = PatternFill(start_color="0047AB", end_color="0047AB", fill_type="solid")
+HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
+THIN = Side(border_style="thin", color="CBD5E1")
+BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+
+
+def _build_xlsx(title: str, headers, rows, money_cols=(), number_cols=()):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = title[:31]
+    for c, h in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=c, value=h)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = BORDER
+    for r_idx, row in enumerate(rows, start=2):
+        for c_idx, val in enumerate(row, start=1):
+            cell = ws.cell(row=r_idx, column=c_idx, value=val)
+            cell.border = BORDER
+            if c_idx in money_cols:
+                cell.number_format = '£#,##0.00'
+            elif c_idx in number_cols:
+                cell.number_format = '#,##0.00'
+    # Autosize approximated
+    for col in range(1, len(headers) + 1):
+        letter = get_column_letter(col)
+        max_len = len(str(headers[col - 1]))
+        for r in rows:
+            v = r[col - 1] if col - 1 < len(r) else ""
+            ln = len(str(v)) if v is not None else 0
+            if ln > max_len:
+                max_len = ln
+        ws.column_dimensions[letter].width = min(max_len + 3, 40)
+    ws.freeze_panes = "A2"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def _xlsx_response(buf: io.BytesIO, filename: str):
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _fmt_date(v):
+    if not v:
+        return ""
+    s = str(v)[:10]
+    try:
+        y, m, d = s.split("-")
+        return f"{d}.{m}.{y}"
+    except Exception:
+        return s
+
+
+@api.get("/export/products.xlsx")
+async def export_products(user: dict = Depends(require_permission("products.view"))):
+    products = await db.products.find({}, {"_id": 0}).sort("name", 1).to_list(5000)
+    headers = ["Ad", "Kod", "Kategori", "Birim", "Birim Ağırlık", "Stok", "Min Stok", "Maliyet (£)", "Satış Fiyatı (£)", "Stok Maliyet Değeri (£)", "Stok Satış Değeri (£)", "Üretim Tarihi", "SKT", "Aktif", "Notlar"]
+    rows = []
+    for p in products:
+        stock = float(p.get("current_stock", 0))
+        cost = float(p.get("cost_price", 0))
+        sale = float(p.get("sale_price", 0))
+        rows.append([
+            p.get("name", ""), p.get("code", ""), p.get("category", ""), p.get("unit", ""),
+            float(p.get("unit_weight", 0)), stock, float(p.get("min_stock", 0)),
+            cost, sale, stock * cost, stock * sale,
+            _fmt_date(p.get("production_date")), _fmt_date(p.get("expiry_date")),
+            "Evet" if p.get("active") else "Hayır", p.get("notes", ""),
+        ])
+    buf = _build_xlsx("Ürünler", headers, rows, money_cols=(8, 9, 10, 11), number_cols=(5, 6, 7))
+    return _xlsx_response(buf, "urunler.xlsx")
+
+
+@api.get("/export/stock.xlsx")
+async def export_stock(user: dict = Depends(require_permission("reports.view"))):
+    products = await db.products.find({"active": True}, {"_id": 0}).sort("name", 1).to_list(5000)
+    headers = ["Ürün", "Kod", "Kategori", "Birim", "Güncel Stok", "Maliyet (£)", "Satış (£)", "Mali Değer (£)", "Satış Değeri (£)"]
+    rows = []
+    for p in products:
+        stock = float(p.get("current_stock", 0))
+        cost = float(p.get("cost_price", 0))
+        sale = float(p.get("sale_price", 0))
+        rows.append([
+            p.get("name", ""), p.get("code", ""), p.get("category", ""), p.get("unit", ""),
+            stock, cost, sale, stock * cost, stock * sale,
+        ])
+    buf = _build_xlsx("Stok Raporu", headers, rows, money_cols=(6, 7, 8, 9), number_cols=(5,))
+    return _xlsx_response(buf, "stok-raporu.xlsx")
+
+
+@api.get("/export/sales.xlsx")
+async def export_sales(start: Optional[str] = None, end: Optional[str] = None, user: dict = Depends(require_permission("sales.view"))):
+    q = {}
+    if start or end:
+        q["date"] = {}
+        if start:
+            q["date"]["$gte"] = start
+        if end:
+            q["date"]["$lte"] = end + "T23:59:59"
+    sales = await db.sales.find(q, {"_id": 0}).sort("date", -1).to_list(10000)
+    headers = ["Tarih", "Fiş No", "Müşteri", "Ürünler", "Brüt (£)", "İskonto (£)", "Net (£)", "Ödeme Durumu", "Açıklama"]
+    rows = []
+    status_map = {"odendi": "Ödendi", "bekliyor": "Bekliyor", "kismi": "Kısmi"}
+    for s in sales:
+        items_str = "; ".join(f"{it.get('product_name','')} ×{float(it.get('quantity',0)):.2f}" for it in s.get("items", []))
+        rows.append([
+            _fmt_date(s.get("date")),
+            s.get("id", "")[:8].upper(),
+            s.get("customer_name", ""),
+            items_str,
+            float(s.get("gross_total", 0)),
+            float(s.get("discount", 0)),
+            float(s.get("net_total", 0)),
+            status_map.get(s.get("payment_status"), s.get("payment_status", "")),
+            s.get("description", ""),
+        ])
+    buf = _build_xlsx("Satışlar", headers, rows, money_cols=(5, 6, 7))
+    return _xlsx_response(buf, "satislar.xlsx")
+
+
+@api.get("/export/productions.xlsx")
+async def export_productions(start: Optional[str] = None, end: Optional[str] = None, user: dict = Depends(require_permission("productions.view"))):
+    q = {}
+    if start or end:
+        q["date"] = {}
+        if start:
+            q["date"]["$gte"] = start
+        if end:
+            q["date"]["$lte"] = end + "T23:59:59"
+    prods = await db.productions.find(q, {"_id": 0}).sort("date", -1).to_list(10000)
+    pmap = {pp["id"]: pp["name"] for pp in await db.products.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(5000)}
+    headers = ["Tarih", "Ürün", "Miktar", "Birim", "Lot/Parti No", "Maliyet (£)", "Açıklama"]
+    rows = []
+    for p in prods:
+        rows.append([
+            _fmt_date(p.get("date")),
+            pmap.get(p.get("product_id"), "—"),
+            float(p.get("quantity", 0)),
+            p.get("unit", ""),
+            p.get("lot_number", ""),
+            float(p.get("cost", 0)),
+            p.get("description", ""),
+        ])
+    buf = _build_xlsx("Üretim", headers, rows, money_cols=(6,), number_cols=(3,))
+    return _xlsx_response(buf, "uretim.xlsx")
 
 
 # ===== DASHBOARD =====
@@ -944,25 +1196,36 @@ async def report_sales(start: Optional[str] = None, end: Optional[str] = None, u
 
 # ===== USERS (admin) =====
 @api.get("/users")
-async def list_users(user: dict = Depends(require_roles(ROLE_ADMIN))):
+async def list_users(user: dict = Depends(require_permission("users.manage"))):
     docs = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
+    for u in docs:
+        if u.get("permissions") is None:
+            u["permissions"] = default_permissions(u.get("role", ""))
     return docs
 
 
 @api.put("/users/{uid}")
-async def update_user(uid: str, payload: dict, user: dict = Depends(require_roles(ROLE_ADMIN))):
-    allowed = {k: v for k, v in payload.items() if k in ["name", "role", "active"]}
+async def update_user(uid: str, payload: dict, user: dict = Depends(require_permission("users.manage"))):
+    allowed = {k: v for k, v in payload.items() if k in ["name", "role", "active", "permissions"]}
     if "role" in allowed and allowed["role"] not in ALL_ROLES:
         raise HTTPException(status_code=400, detail="Geçersiz rol")
+    if "permissions" in allowed:
+        if not isinstance(allowed["permissions"], list):
+            raise HTTPException(status_code=400, detail="permissions liste olmalı")
+        bad = [p for p in allowed["permissions"] if p not in ALL_PERMISSIONS]
+        if bad:
+            raise HTTPException(status_code=400, detail=f"Geçersiz izinler: {', '.join(bad)}")
     res = await db.users.update_one({"id": uid}, {"$set": allowed})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
     u = await db.users.find_one({"id": uid}, {"_id": 0, "password_hash": 0})
+    if u.get("permissions") is None:
+        u["permissions"] = default_permissions(u.get("role", ""))
     return u
 
 
 @api.delete("/users/{uid}")
-async def delete_user(uid: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
+async def delete_user(uid: str, user: dict = Depends(require_permission("users.manage"))):
     if uid == user["id"]:
         raise HTTPException(status_code=400, detail="Kendi hesabınızı silemezsiniz")
     res = await db.users.delete_one({"id": uid})
@@ -1014,6 +1277,7 @@ async def startup_event():
             "name": "Admin",
             "role": ROLE_ADMIN,
             "active": True,
+            "permissions": list(ALL_PERMISSIONS),
             "password_hash": hash_password(admin_pw),
             "created_at": now_utc().isoformat(),
         })
