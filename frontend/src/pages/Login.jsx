@@ -81,6 +81,11 @@ export default function Login() {
           >
             {loading ? "Giriş yapılıyor..." : "Giriş Yap"}
           </Button>
+          <div className="text-right text-sm">
+            <Link to="/forgot-password" className="text-slate-500 hover:text-[#0047AB]" data-testid="forgot-password-link">
+              Şifremi unuttum
+            </Link>
+          </div>
         </form>
         <div className="text-center text-sm text-slate-500 mt-6">
           Hesabınız yok mu?{" "}

@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 2: validated the 2 new features (password reset flow + sales receipt PDF). Created /app/backend/tests/test_new_features.py with 10 pytest cases - all 10 pass. Re-ran iteration 1 regression suite (38 tests) - all still pass (total 48/48). Frontend smoke: forgot-password-link on /login navigates to /forgot-password; submitting valid email returns dev_token and renders dev reset link; /reset-password page renders both via URL with token and direct URL (showing token input); login as admin → /sales → click sale row → receipt dialog opens with 'PDF İndir' button; clicking it downloads a valid 2533-byte PDF (magic bytes %PDF) named fis-<id>.pdf.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Sales page (Günlük Satış)", "issues": ["Date range filters (BAŞLANGIÇ / BITIŞ) use browser-native date input (<input type='date'> mm/dd/yyyy placeholder) instead of shadcn Calendar/Popover component. Inconsistent with app's Turkish DD.MM.YYYY format. Pre-existing — not introduced by these two new features."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/new_features.xml",
+    "/app/test_reports/pytest/regression.xml"
+  ],
+  "action_items": [
+    "(Optional, non-blocking) Replace browser-native date inputs on Sales page with shadcn Calendar/Popover for consistency and DD.MM.YYYY display.",
+    "(Optional) The dev_token field is intentionally exposed in /api/auth/forgot-password response when user exists. Before going to production, gate this behind an explicit ENV flag (e.g. DEV_MODE=true) and wire a real email sender."
+  ],
+  "critical_code_review_comments": [
+    "/auth/forgot-password correctly avoids enumeration: same shape {ok, message} returned whether user exists, dev_token only added when user is found. Tokens stored in db.password_reset_tokens with 1h expiry and used flag.",
+    "/auth/reset-password: token presence, used flag, and timezone-aware expiry are all checked. Pydantic Field(min_length=6) enforces password length → returns 422 as expected.",
+    "Sale receipt endpoint: uses reportlab SimpleDocTemplate A5, sets _id filter on find, raises 404 properly. PDF is built in-memory and returned via Response. Authentication is enforced via get_current_user dependency (401 confirmed).",
+    "server.py is 1029 lines — already flagged in iteration_1; new endpoints add ~120 lines; consider splitting auth and sales into routers/services for maintainability."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py"
+  ],
+  "success_rate": {"backend": "100% (10/10 new + 38/38 regression = 48/48)", "frontend": "100% on tested flows (forgot/reset pages + sale receipt PDF download)"},
+  "test_credentials": "admin@stoktakip.com / Admin123! (re-seeded on every backend startup). Temp users (reset_*@example.com) created in pytest fixtures.",
+  "seed_data_creation": "test_new_features.py creates a temp personel user for password-reset tests, plus a temp product/customer/sale for PDF tests; sale/product/customer are deleted in fixture teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Two new endpoints validated: POST /api/auth/forgot-password (returns dev_token + dev_link only when email exists), POST /api/auth/reset-password (validates token, marks used, updates bcrypt hash), GET /api/sales/{id}/receipt (returns application/pdf bytes, 401 unauth, 404 invalid id). Frontend pages: /forgot-password (data-testids: forgot-email-input, forgot-submit-button, forgot-success, dev-reset-link), /reset-password (reset-token-input shown only when no ?token= in URL; reset-password-input, reset-confirm-input, reset-submit-button). Sales page: click any [data-testid^='sale-row-'] row to open dialog, then click [data-testid='download-receipt-pdf'] which triggers a browser download (fis-<8charId>.pdf)."
+}

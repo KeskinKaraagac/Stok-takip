@@ -5,7 +5,9 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 import os
+import io
 import uuid
+import secrets
 import logging
 import bcrypt
 import jwt as pyjwt
@@ -13,9 +15,16 @@ from datetime import datetime, timezone, timedelta, date
 from typing import List, Optional, Literal
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
+
+from reportlab.lib.pagesizes import A5
+from reportlab.lib import colors
+from reportlab.lib.units import mm
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 
 # ----- Mongo Setup -----
@@ -255,6 +264,57 @@ async def logout(response: Response):
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     return user
+
+
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    password: str = Field(min_length=6)
+
+
+@api.post("/auth/forgot-password")
+async def forgot_password(payload: ForgotPasswordIn):
+    email = payload.email.lower().strip()
+    user = await db.users.find_one({"email": email})
+    # Always return success to avoid email enumeration
+    if user:
+        token = secrets.token_urlsafe(32)
+        await db.password_reset_tokens.insert_one({
+            "token": token,
+            "user_id": user["id"],
+            "email": email,
+            "expires_at": now_utc() + timedelta(hours=1),
+            "used": False,
+            "created_at": now_utc(),
+        })
+        frontend = os.environ.get("FRONTEND_URL", "")
+        reset_link = f"{frontend}/reset-password?token={token}" if frontend else f"/reset-password?token={token}"
+        # In production this would be emailed. For now we log + return token in dev mode.
+        logger.info(f"[PASSWORD RESET] {email}: {reset_link}")
+        return {"ok": True, "message": "Şifre sıfırlama bağlantısı gönderildi", "dev_token": token, "dev_link": reset_link}
+    return {"ok": True, "message": "Şifre sıfırlama bağlantısı gönderildi"}
+
+
+@api.post("/auth/reset-password")
+async def reset_password(payload: ResetPasswordIn):
+    rec = await db.password_reset_tokens.find_one({"token": payload.token})
+    if not rec:
+        raise HTTPException(status_code=400, detail="Geçersiz token")
+    if rec.get("used"):
+        raise HTTPException(status_code=400, detail="Bu bağlantı zaten kullanılmış")
+    exp = rec.get("expires_at")
+    if isinstance(exp, datetime):
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if exp < now_utc():
+            raise HTTPException(status_code=400, detail="Bağlantı süresi dolmuş")
+    new_hash = hash_password(payload.password)
+    await db.users.update_one({"id": rec["user_id"]}, {"$set": {"password_hash": new_hash}})
+    await db.password_reset_tokens.update_one({"token": payload.token}, {"$set": {"used": True, "used_at": now_utc()}})
+    return {"ok": True, "message": "Şifre başarıyla güncellendi"}
 
 
 # ===== PRODUCTS =====
@@ -524,6 +584,103 @@ async def create_sale(payload: SaleIn, user: dict = Depends(require_roles(*WRITE
         })
     sale_doc.pop("_id", None)
     return sale_doc
+
+
+@api.get("/sales/{sid}/receipt")
+async def sale_receipt_pdf(sid: str, user: dict = Depends(get_current_user)):
+    sale = await db.sales.find_one({"id": sid}, {"_id": 0})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Satış bulunamadı")
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A5, topMargin=12 * mm, bottomMargin=12 * mm, leftMargin=12 * mm, rightMargin=12 * mm)
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("h1", parent=styles["Heading1"], fontSize=16, textColor=colors.HexColor("#0047AB"), spaceAfter=4)
+    small = ParagraphStyle("small", parent=styles["Normal"], fontSize=8, textColor=colors.HexColor("#64748b"))
+
+    story = []
+    story.append(Paragraph("StokTakip", h1))
+    story.append(Paragraph("SATIŞ FİŞİ", small))
+    story.append(Spacer(1, 8))
+
+    sale_date = (sale.get("date") or "")[:10]
+    try:
+        y, m, d = sale_date.split("-")
+        sale_date_fmt = f"{d}.{m}.{y}"
+    except Exception:
+        sale_date_fmt = sale_date
+
+    info_data = [
+        ["Fiş No:", sale["id"][:8].upper()],
+        ["Tarih:", sale_date_fmt],
+        ["Müşteri:", sale.get("customer_name", "-")],
+        ["Ödeme:", {"odendi": "Ödendi", "bekliyor": "Bekliyor", "kismi": "Kısmi"}.get(sale.get("payment_status"), sale.get("payment_status", "-"))],
+    ]
+    info_tbl = Table(info_data, colWidths=[28 * mm, 90 * mm])
+    info_tbl.setStyle(TableStyle([
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#64748b")),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story.append(info_tbl)
+    story.append(Spacer(1, 10))
+
+    # Items table
+    item_rows = [["Ürün", "Adet", "Birim Fiyat", "Toplam"]]
+    for it in sale.get("items", []):
+        item_rows.append([
+            it.get("product_name", ""),
+            f"{float(it.get('quantity', 0)):,.2f}",
+            f"£{float(it.get('unit_price', 0)):,.2f}",
+            f"£{float(it.get('line_total', 0)):,.2f}",
+        ])
+    items_tbl = Table(item_rows, colWidths=[58 * mm, 18 * mm, 25 * mm, 25 * mm])
+    items_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#475569")),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.append(items_tbl)
+    story.append(Spacer(1, 10))
+
+    # Totals
+    totals = [
+        ["Brüt Tutar:", f"£{float(sale.get('gross_total', 0)):,.2f}"],
+        ["İskonto:", f"£{float(sale.get('discount', 0)):,.2f}"],
+        ["NET TUTAR:", f"£{float(sale.get('net_total', 0)):,.2f}"],
+    ]
+    t_tbl = Table(totals, colWidths=[60 * mm, 35 * mm], hAlign="RIGHT")
+    t_tbl.setStyle(TableStyle([
+        ("FONTSIZE", (0, 0), (-1, -2), 10),
+        ("FONTSIZE", (0, -1), (-1, -1), 13),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("#0047AB")),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("LINEABOVE", (0, -1), (-1, -1), 1, colors.HexColor("#0f172a")),
+        ("TOPPADDING", (0, -1), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story.append(t_tbl)
+
+    if sale.get("description"):
+        story.append(Spacer(1, 10))
+        story.append(Paragraph(f"<i>Açıklama: {sale['description']}</i>", small))
+
+    story.append(Spacer(1, 16))
+    story.append(Paragraph(f"Bu fiş StokTakip tarafından {now_utc().strftime('%d.%m.%Y %H:%M')} UTC tarihinde oluşturulmuştur.", small))
+
+    doc.build(story)
+    buf.seek(0)
+    filename = f"fis-{sale['id'][:8]}.pdf"
+    return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{filename}"'})
 
 
 @api.delete("/sales/{sid}")

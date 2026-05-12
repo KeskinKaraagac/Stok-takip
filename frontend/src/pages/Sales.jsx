@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, ShoppingCart, X } from "lucide-react";
+import { Plus, Trash2, ShoppingCart, X, FileDown } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -102,6 +102,23 @@ export default function Sales() {
     if (s === "odendi") return <Badge className="rounded-sm bg-emerald-50 text-emerald-700 border-emerald-200" variant="outline">Ödendi</Badge>;
     if (s === "kismi") return <Badge className="rounded-sm bg-amber-50 text-amber-700 border-amber-200" variant="outline">Kısmi</Badge>;
     return <Badge className="rounded-sm bg-red-50 text-red-700 border-red-200" variant="outline">Bekliyor</Badge>;
+  };
+
+  const downloadPdf = async (sid) => {
+    if (!sid) return;
+    try {
+      const res = await api.get(`/sales/${sid}/receipt`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `fis-${sid.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(formatApiError(e));
+    }
   };
 
   return (
@@ -275,6 +292,12 @@ export default function Sales() {
               <div className="flex justify-between text-lg font-semibold mt-2 pt-2 border-t border-slate-200"><span>Net Tutar</span><span className="tabular text-[#0047AB]">{formatCurrency(receipt.net_total)}</span></div>
             </div>
           )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReceipt(null)} className="rounded-sm">Kapat</Button>
+            <Button onClick={() => downloadPdf(receipt?.id)} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm" data-testid="download-receipt-pdf">
+              <FileDown className="w-4 h-4 mr-2" /> PDF İndir
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
