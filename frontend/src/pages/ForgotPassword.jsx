@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Package } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -31,14 +30,10 @@ export default function ForgotPassword() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
       <Toaster position="bottom-right" richColors />
       <div className="w-full max-w-md bg-white border border-slate-200 p-8 rounded-sm">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-[#0047AB] flex items-center justify-center">
-            <Package className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="font-display text-xl font-bold text-slate-900 tracking-tight">StokTakip</h1>
-            <p className="text-xs uppercase tracking-[0.15em] text-slate-500">Şifre Sıfırlama</p>
-          </div>
+        <div className="flex flex-col items-center text-center mb-6">
+          <img src="/logo.jpg" alt="StokTakip" className="w-24 h-24 object-contain mb-3" />
+          <h1 className="font-display text-2xl font-bold text-slate-900 tracking-tight">StokTakip</h1>
+          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mt-1">Şifre Sıfırlama</p>
         </div>
         <h2 className="text-2xl font-display font-semibold text-slate-900 mb-1">Şifremi Unuttum</h2>
         <p className="text-sm text-slate-500 mb-6">E-postanızı girin, size sıfırlama bağlantısı oluşturalım.</p>

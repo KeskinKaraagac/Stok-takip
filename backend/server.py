@@ -24,7 +24,7 @@ from reportlab.lib.pagesizes import A5
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -696,8 +696,23 @@ async def sale_receipt_pdf(sid: str, user: dict = Depends(get_current_user)):
     small = ParagraphStyle("small", parent=styles["Normal"], fontSize=8, textColor=colors.HexColor("#64748b"))
 
     story = []
-    story.append(Paragraph("StokTakip", h1))
-    story.append(Paragraph("SATIŞ FİŞİ", small))
+    # Header: logo + title (side by side)
+    logo_path = str(ROOT_DIR.parent / "frontend" / "public" / "logo.jpg")
+    try:
+        logo_img = RLImage(logo_path, width=18 * mm, height=18 * mm)
+        header_tbl = Table(
+            [[logo_img, Paragraph("StokTakip<br/><font size=8 color='#64748b'>SATIŞ FİŞİ</font>", h1)]],
+            colWidths=[22 * mm, 90 * mm],
+        )
+        header_tbl.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(header_tbl)
+    except Exception:
+        story.append(Paragraph("StokTakip", h1))
+        story.append(Paragraph("SATIŞ FİŞİ", small))
     story.append(Spacer(1, 8))
 
     sale_date = (sale.get("date") or "")[:10]

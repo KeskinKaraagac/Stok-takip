@@ -15,6 +15,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useState } from "react";
 import { Toaster } from "sonner";
+import Logo from "./Logo";
 
 const MENU = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, roles: ["admin", "personel", "rapor"] },
@@ -51,10 +52,7 @@ export default function Layout() {
 
       {/* Mobile top bar */}
       <div className="lg:hidden flex items-center justify-between border-b border-slate-200 px-4 h-14 bg-white sticky top-0 z-30">
-        <div className="flex items-center gap-2">
-          <Package className="w-5 h-5 text-[#0047AB]" />
-          <span className="font-display font-semibold tracking-tight text-slate-900">StokTakip</span>
-        </div>
+        <Logo size={32} subtitle={null} />
         <button
           onClick={() => setMobileOpen((v) => !v)}
           className="p-2 text-slate-600 hover:bg-slate-100 rounded-sm"
@@ -72,12 +70,10 @@ export default function Layout() {
         }`}
         data-testid="sidebar"
       >
-        <div className="px-5 h-16 flex items-center gap-2 border-b border-slate-200">
-          <div className="w-8 h-8 bg-[#0047AB] flex items-center justify-center">
-            <Package className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <div className="font-display text-base font-bold text-slate-900 tracking-tight leading-none">StokTakip</div>
+        <div className="px-5 h-16 flex items-center gap-3 border-b border-slate-200 bg-white">
+          <img src="/logo.jpg" alt="StokTakip" className="w-10 h-10 object-contain" data-testid="sidebar-logo" />
+          <div className="leading-tight">
+            <div className="font-display text-base font-bold text-slate-900 tracking-tight">StokTakip</div>
             <div className="text-[10px] uppercase tracking-[0.15em] text-slate-500 mt-1">Üretim & Satış</div>
           </div>
         </div>
