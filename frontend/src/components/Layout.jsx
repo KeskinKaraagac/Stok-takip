@@ -29,10 +29,10 @@ const MENU = [
   { to: "/settings", key: "settings", icon: Settings, roles: ["admin"] },
 ];
 
-const ROLE_LABELS = {
-  admin: "Yönetici",
-  personel: "Personel",
-  rapor: "Sadece Rapor",
+const ROLE_KEYS = {
+  admin: "role_admin",
+  personel: "role_personel",
+  rapor: "role_rapor",
 };
 
 export default function Layout() {
@@ -113,7 +113,7 @@ export default function Layout() {
           <div className="text-xs text-slate-500 mb-2 uppercase tracking-wider" data-testid="user-info">
             {user?.name}
           </div>
-          <div className="text-xs text-slate-400 mb-3">{ROLE_LABELS[user?.role] || user?.role}</div>
+          <div className="text-xs text-slate-400 mb-3">{t(ROLE_KEYS[user?.role]) || user?.role}</div>
           <button
             onClick={handleLogout}
             data-testid="logout-button"
