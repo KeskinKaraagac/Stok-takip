@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 6 validation: dashboard kg-focused KPIs + new category_weight pie & category_sale_value bar charts, Reports stock-category-summary card + chart value labels, comprehensive i18n on Products/Production/Customers/Stock/Reports. Backend: created /app/backend/tests/test_iteration6.py with 15 pytest cases — ALL 15 PASS. Full regression suite (114 tests across 6 test files) PASS 114/114. Frontend (admin login): Dashboard renders 4 kg-focused KPIs (TOPLAM ÜRÜN 5 / TOPLAM STOK 10,058 kg / BUGÜNKÜ ÇIKIŞ 22 kg / BU AY ÇIKIŞ 22 kg), category-weight-pie shows visible labels 'Doner: 5,760.0 kg (57%)', 'Chicken: 3,010.0 kg (30%)', 'Cooked: 1,278.0 kg (13%)', 'T: 10.0 kg (0%)', category-sale-bar shows currency labels '£18,514.00 / £7,525.00 / £6,326.10 / £100.00' on right of each bar. Reports/Güncel Stok: stock-category-summary card with 4 category chips above table with columns Ürün/Kod/Kategori/Birim/Stok Durumu/Stok Ağırlığı (kg). Reports/Ürün/Kategori: pie shows kg+% labels, bar shows quantity labels on top (535/639/41/301/10). Reports/Mali Değer: pie shows £ labels (Doner: £0 (0%), T: £50 (100%)). i18n EN→Products/Productions/Customers/Stock/Reports: ZERO Turkish strings remain on any of these 5 pages; report tabs translate to 'Current Stock / Financial Value / Product/Category / Production / Exit'; sidebar shows 'Dashboard / Product Control / Production Entry / Customers / Warehouse Exit / Stock Status / Reports / Settings / Administrator / Logout'. Customer types 'Cash & Carry / Retail / Shop' present in EN. TR round-trip flawless.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Settings page (EN mode)", "issues": ["Pre-existing from iteration 4: Settings page section labels still mostly TR even in EN mode — company profile labels (Şirket Adı/Telefon/Vergi No/Web Sitesi/Adres), Profil Bilgileri labels (Ad/E-Posta/Mevcut Şifre/Yeni Şifre/Rol/Kaydet), Uygulama Ayarları labels (Para Birimi/Tarih Formatı/Tema/Dil), Kullanıcı Yönetimi table headers (AD/E-POSTA/ROL/İZİN SAYISI/AKTİF/KAYIT/İŞLEM). Iteration 6 scope explicitly excluded Settings (request specified Products/Production/Customers/Reports/Stock). Not a regression — just noting that Settings remains as-is."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6.py",
+    "/app/test_reports/pytest/iteration6.xml",
+    "/app/test_reports/pytest/regression6.xml"
+  ],
+  "action_items": [
+    "(Optional follow-up) Extend i18n coverage to Settings page labels so a fully-EN experience also applies to /settings (out of current iteration scope)."
+  ],
+  "critical_code_review_comments": [
+    "Dashboard.jsx renderPieLabel inline custom function renders <text> via SVG — labels persist after chart animation completes (verified via DOM query, all 4 category labels present).",
+    "Recharts <LabelList position='right' formatter={(v)=>formatCurrency(v)}> renders £-prefixed values on bar chart — confirmed visually with £18,514.00 / £7,525.00 / £6,326.10 / £100.00.",
+    "Backend dashboard_summary returns category_weight & category_sale_value already sorted desc by their respective metric (lines 1337-1344 server.py). Sum of category_weight == total_stock_weight verified by test (drift < 0.01).",
+    "report_category response now includes weight + sale_value alongside units/value/count — backwards compatible (extra keys only).",
+    "LanguageContext TRANSLATIONS map now ~150 keys covers Products/Production/Customers/Stock/Reports completely. Sidebar uses t() correctly. Stock movement types translate via type_uretim/type_satis/type_manuel/type_fire/type_iade/type_baslangic keys (verified absent any of these TR labels on /stock in EN mode).",
+    "Backend server.py is 1695 lines (was 1674 in iter 5) — STILL not split into routers. Recommended for iter 7.",
+    "Frontend uses framer-motion / fadeIn CSS class — animations present (animate-fadeIn on dashboard-page wrapper). Subtle, non-jarring.",
+    "Customer types accept 'Cash & Carry' / 'Retail' / 'Shop' end-to-end (test_iteration5.py covers — still passing)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration6.py"],
+  "success_rate": {"backend": "100% (15/15 new + 114/114 full regression)", "frontend": "100% on requested flows (dashboard new charts/KPIs, reports stock-category-summary + all chart labels, EN translation coverage on 5 pages, TR round-trip)"},
+  "test_credentials": "admin@stoktakip.com / Admin123! (re-seeded each backend startup)",
+  "seed_data_creation": "No new seed data — used existing products/sales. test_iteration6.py is read-only against /api endpoints (no mutations).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 6 endpoints validated: GET /api/dashboard/summary returns category_weight: [{category,weight}] and category_sale_value: [{category,value}] both sorted desc; legacy fields (total_stock_weight, today_weight, month_weight, exit_trend, top_products, etc.) preserved. GET /api/reports/category-distribution rows now have {category, units, weight, value, sale_value, count}. Frontend new data-testids: category-weight-pie (Dashboard), category-sale-bar (Dashboard), stock-category-summary (Reports/Güncel Stok). Chart value labels render via Recharts <LabelList> (bar charts) and inline renderPieLabel function in Dashboard.jsx/Reports.jsx (pie charts). Sleep 2-2.5s after page load before asserting on chart labels. Sidebar tabs translate via Layout.jsx — when scoping playwright clicks to Reports tablist tabs, use [role='tablist'] button selector — DO NOT use button:has-text('Üretim') alone because it matches sidebar 'Üretim Girişi' too. i18n: LanguageContext.jsx ~150 keys. Pages with FULL translation: Dashboard, Products, Production, Customers, Stock, Reports. Pages with PARTIAL translation (pre-existing): Settings.",
+  "rca of the issue": "No bugs found this iteration. Everything implemented per spec."
+}

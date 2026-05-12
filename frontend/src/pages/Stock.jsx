@@ -9,23 +9,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
 import api from "../lib/api";
 import { formatCurrency, formatNumber, formatDateTime, formatApiError } from "../lib/format";
-import { hasPermission, downloadXlsx } from "../lib/permissions";
+import { downloadXlsx } from "../lib/permissions";
 import PageHeader from "../components/PageHeader";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
-
-const TYPE_LABEL = {
-  uretim: "Üretim",
-  satis: "Satış",
-  manuel: "Manuel Düzeltme",
-  fire: "Fire",
-  iade: "İade",
-  baslangic: "Başlangıç",
-};
+import { useLanguage } from "../context/LanguageContext";
 
 export default function Stock() {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const canAdjust = ["admin", "personel"].includes(user?.role);
+  const TYPE_LABEL = {
+    uretim: t("type_uretim"),
+    satis: t("type_satis"),
+    manuel: t("type_manuel"),
+    fire: t("type_fire"),
+    iade: t("type_iade"),
+    baslangic: t("type_baslangic"),
+  };
   const [products, setProducts] = useState([]);
   const [movements, setMovements] = useState([]);
   const [filterProduct, setFilterProduct] = useState("all");
@@ -45,7 +46,6 @@ export default function Stock() {
 
   const pmap = useMemo(() => Object.fromEntries(products.map((p) => [p.id, p])), [products]);
 
-  // Aggregate in/out per product
   const totals = useMemo(() => {
     const acc = {};
     movements.forEach((m) => {
@@ -57,11 +57,11 @@ export default function Stock() {
   }, [movements]);
 
   const submitAdjust = async () => {
-    if (!form.product_id) { toast.error("Ürün seçin"); return; }
-    if (Number(form.quantity) === 0) { toast.error("Miktar 0 olamaz"); return; }
+    if (!form.product_id) { toast.error(t("toast_select_product")); return; }
+    if (Number(form.quantity) === 0) { toast.error(t("toast_amount_zero")); return; }
     try {
       await api.post("/stock/adjust", { ...form, quantity: Number(form.quantity) });
-      toast.success("Stok düzeltme kaydedildi");
+      toast.success(t("toast_stock_adjusted"));
       setOpen(false);
       setForm({ product_id: "", movement_type: "manuel", quantity: 0, description: "" });
       load();
@@ -69,10 +69,10 @@ export default function Stock() {
   };
 
   return (
-    <div data-testid="stock-page">
+    <div data-testid="stock-page" className="animate-fadeIn">
       <PageHeader
-        title="Stok Durumu"
-        subtitle="Güncel stoklar ve hareket geçmişi"
+        title={t("stock")}
+        subtitle={t("stock_subtitle")}
         actions={
           <>
             <Button
@@ -81,11 +81,11 @@ export default function Stock() {
               data-testid="export-stock-xlsx"
               className="rounded-sm"
             >
-              <FileSpreadsheet className="w-4 h-4 mr-2" /> Excel
+              <FileSpreadsheet className="w-4 h-4 mr-2" /> {t("excel")}
             </Button>
             {canAdjust && (
               <Button onClick={() => setOpen(true)} data-testid="adjust-stock-btn" className="bg-[#0047AB] hover:bg-[#003380] rounded-sm">
-                <Wrench className="w-4 h-4 mr-2" /> Manuel Düzeltme
+                <Wrench className="w-4 h-4 mr-2" /> {t("manual_adjust")}
               </Button>
             )}
           </>
@@ -94,18 +94,29 @@ export default function Stock() {
 
       <Tabs defaultValue="status">
         <TabsList className="rounded-sm">
-          <TabsTrigger value="status" data-testid="tab-stock-status">Stok Durumu</TabsTrigger>
-          <TabsTrigger value="movements" data-testid="tab-stock-movements">Hareket Geçmişi</TabsTrigger>
+          <TabsTrigger value="status" data-testid="tab-stock-status">{t("stock_status")}</TabsTrigger>
+          <TabsTrigger value="movements" data-testid="tab-stock-movements">{t("movement_history")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="status" className="mt-4">
           <div className="border border-slate-200 rounded-sm overflow-x-auto bg-white">
             <table className="dense w-full">
               <thead>
-                <tr><th>Ürün</th><th>Kod</th><th>Kategori</th><th>Birim</th><th>Toplam Giriş</th><th>Toplam Çıkış</th><th>Güncel Stok</th><th>Stok Ağırlığı (kg)</th><th>Satış Değeri</th><th>Durum</th></tr>
+                <tr>
+                  <th>{t("product")}</th>
+                  <th>{t("code")}</th>
+                  <th>{t("category")}</th>
+                  <th>{t("unit")}</th>
+                  <th>{t("total_in")}</th>
+                  <th>{t("total_out")}</th>
+                  <th>{t("current_stock")}</th>
+                  <th>{t("stock_weight_kg")}</th>
+                  <th>{t("sale_value")}</th>
+                  <th>{t("status")}</th>
+                </tr>
               </thead>
               <tbody>
-                {products.length === 0 && <tr><td colSpan={10} className="text-center text-slate-400 py-8">Ürün yok</td></tr>}
+                {products.length === 0 && <tr><td colSpan={10} className="text-center text-slate-400 py-8">{t("no_products")}</td></tr>}
                 {products.map((p) => {
                   const tt = totals[p.id] || { inq: 0, outq: 0 };
                   const stock = Number(p.current_stock || 0);
@@ -124,7 +135,9 @@ export default function Stock() {
                       <td className="tabular">{formatNumber(stockKg, 2)} kg</td>
                       <td className="tabular">{formatCurrency(stock * Number(p.sale_price))}</td>
                       <td>
-                        {low ? <span className="inline-flex items-center gap-1 text-amber-700 text-xs"><AlertTriangle className="w-3 h-3" /> Düşük Stok</span> : <span className="text-emerald-700 text-xs">Normal</span>}
+                        {low
+                          ? <span className="inline-flex items-center gap-1 text-amber-700 text-xs"><AlertTriangle className="w-3 h-3" /> {t("low_stock_label")}</span>
+                          : <span className="text-emerald-700 text-xs">{t("normal_label")}</span>}
                       </td>
                     </tr>
                   );
@@ -136,11 +149,11 @@ export default function Stock() {
 
         <TabsContent value="movements" className="mt-4">
           <div className="mb-4">
-            <Label className="text-xs uppercase tracking-wider text-slate-500">Ürün Filtre</Label>
+            <Label className="text-xs uppercase tracking-wider text-slate-500">{t("product_filter")}</Label>
             <Select value={filterProduct} onValueChange={setFilterProduct}>
               <SelectTrigger className="w-72 rounded-sm mt-1"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Tüm Ürünler</SelectItem>
+                <SelectItem value="all">{t("all_products")}</SelectItem>
                 {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -148,19 +161,28 @@ export default function Stock() {
           <div className="border border-slate-200 rounded-sm overflow-x-auto bg-white">
             <table className="dense w-full">
               <thead>
-                <tr><th>Tarih</th><th>Ürün</th><th>Tip</th><th>Giriş</th><th>Çıkış</th><th>Önceki Stok</th><th>Yeni Stok</th><th>Açıklama</th></tr>
+                <tr>
+                  <th>{t("date")}</th>
+                  <th>{t("product")}</th>
+                  <th>{t("type_col")}</th>
+                  <th>{t("in_qty")}</th>
+                  <th>{t("out_qty")}</th>
+                  <th>{t("previous_stock")}</th>
+                  <th>{t("new_stock")}</th>
+                  <th>{t("description")}</th>
+                </tr>
               </thead>
               <tbody>
-                {movements.length === 0 && <tr><td colSpan={8} className="text-center text-slate-400 py-8">Hareket yok</td></tr>}
+                {movements.length === 0 && <tr><td colSpan={8} className="text-center text-slate-400 py-8">{t("no_movements")}</td></tr>}
                 {movements.map((m) => (
                   <tr key={m.id}>
                     <td>{formatDateTime(m.date)}</td>
                     <td className="font-medium">{pmap[m.product_id]?.name || "—"}</td>
                     <td>{TYPE_LABEL[m.movement_type] || m.movement_type}</td>
-                    <td className="tabular text-emerald-700">{m.in_qty ? formatNumber(m.in_qty, 2) : "-"}</td>
-                    <td className="tabular text-red-600">{m.out_qty ? formatNumber(m.out_qty, 2) : "-"}</td>
-                    <td className="tabular">{formatNumber(m.previous_stock, 2)}</td>
-                    <td className="tabular font-semibold">{formatNumber(m.new_stock, 2)}</td>
+                    <td className="tabular text-emerald-700">{m.in_qty ? formatNumber(m.in_qty, 0) : "-"}</td>
+                    <td className="tabular text-red-600">{m.out_qty ? formatNumber(m.out_qty, 0) : "-"}</td>
+                    <td className="tabular">{formatNumber(m.previous_stock, 0)}</td>
+                    <td className="tabular font-semibold">{formatNumber(m.new_stock, 0)}</td>
                     <td className="text-slate-600">{m.description || "-"}</td>
                   </tr>
                 ))}
@@ -172,40 +194,40 @@ export default function Stock() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="rounded-sm max-w-md">
-          <DialogHeader><DialogTitle>Manuel Stok Düzeltme</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("manual_stock_adjust")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label className="text-xs uppercase tracking-wider text-slate-500">Ürün</Label>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("product")}</Label>
               <Select value={form.product_id} onValueChange={(v) => setForm({ ...form, product_id: v })}>
-                <SelectTrigger className="rounded-sm mt-1"><SelectValue placeholder="Ürün seçin" /></SelectTrigger>
+                <SelectTrigger className="rounded-sm mt-1"><SelectValue placeholder={t("toast_select_product")} /></SelectTrigger>
                 <SelectContent>
-                  {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} (Stok: {formatNumber(p.current_stock, 2)})</SelectItem>)}
+                  {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} ({t("stock")}: {formatNumber(p.current_stock, 0)})</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label className="text-xs uppercase tracking-wider text-slate-500">Tip</Label>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("movement_type")}</Label>
               <Select value={form.movement_type} onValueChange={(v) => setForm({ ...form, movement_type: v })}>
                 <SelectTrigger className="rounded-sm mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="manuel">Manuel Düzeltme</SelectItem>
-                  <SelectItem value="fire">Fire</SelectItem>
-                  <SelectItem value="iade">İade</SelectItem>
+                  <SelectItem value="manuel">{t("type_manuel")}</SelectItem>
+                  <SelectItem value="fire">{t("type_fire")}</SelectItem>
+                  <SelectItem value="iade">{t("type_iade")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label className="text-xs uppercase tracking-wider text-slate-500">Miktar (+ giriş / - çıkış)</Label>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("quantity_signed")}</Label>
               <Input type="number" step="0.01" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="rounded-sm mt-1" data-testid="adjust-qty-input" />
             </div>
             <div>
-              <Label className="text-xs uppercase tracking-wider text-slate-500">Açıklama</Label>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("description")}</Label>
               <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="rounded-sm mt-1" />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} className="rounded-sm">İptal</Button>
-            <Button onClick={submitAdjust} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm" data-testid="save-adjust-btn">Kaydet</Button>
+            <Button variant="outline" onClick={() => setOpen(false)} className="rounded-sm">{t("cancel")}</Button>
+            <Button onClick={submitAdjust} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm" data-testid="save-adjust-btn">{t("save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

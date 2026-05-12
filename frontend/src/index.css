@@ -84,6 +84,32 @@ table.dense tr:hover td {
     @apply bg-slate-50;
 }
 
+/* SaaS polish: subtle animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeIn {
+    animation: fadeIn 0.35s ease-out;
+}
+.animate-slideInUp {
+    animation: slideInUp 0.4s ease-out;
+}
+
+/* Page transition for table rows */
+table.dense tbody tr {
+    transition: background-color 0.15s ease;
+}
+
+/* Sharp focus ring matching Cobalt Blue */
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+    outline-color: #0047AB;
+}
+
 @layer base {
     [data-debug-wrapper="true"] {
         display: contents !important;

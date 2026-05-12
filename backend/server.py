@@ -1323,11 +1323,25 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
 
     # Category stock financial value (kept as one chart)
     cat_value = {}
+    cat_weight = {}
+    cat_sale = {}
     for p in products:
         c = p.get("category") or "Diğer"
         cat_value.setdefault(c, 0.0)
         cat_value[c] += float(p.get("current_stock", 0)) * float(p.get("cost_price", 0))
+        cat_weight.setdefault(c, 0.0)
+        cat_weight[c] += _weight_of(p)
+        cat_sale.setdefault(c, 0.0)
+        cat_sale[c] += float(p.get("current_stock", 0)) * float(p.get("sale_price", 0))
     category_value = [{"category": k, "value": v} for k, v in cat_value.items()]
+    category_weight = sorted(
+        [{"category": k, "weight": v} for k, v in cat_weight.items()],
+        key=lambda x: x["weight"], reverse=True,
+    )
+    category_sale_value = sorted(
+        [{"category": k, "value": v} for k, v in cat_sale.items()],
+        key=lambda x: x["value"], reverse=True,
+    )
 
     # Top 5 by quantity & weight
     all_sales = await db.sales.find({}, {"_id": 0}).to_list(10000)
@@ -1370,6 +1384,8 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
         "month_weight": month_weight,
         "low_stock_products": low_stock,
         "category_value": category_value,
+        "category_weight": category_weight,
+        "category_sale_value": category_sale_value,
         "top_products": top5,
         "recent_productions": recent_prod,
         "recent_sales": recent_sales,
@@ -1418,11 +1434,16 @@ async def report_category(user: dict = Depends(get_current_user)):
     cats = {}
     for p in products:
         cat = p.get("category") or "Diğer"
-        cats.setdefault(cat, {"category": cat, "units": 0.0, "value": 0.0, "count": 0})
-        cats[cat]["units"] += float(p.get("current_stock", 0))
-        cats[cat]["value"] += float(p.get("current_stock", 0)) * float(p.get("cost_price", 0))
+        unit = (p.get("unit") or "").lower()
+        stock = float(p.get("current_stock", 0))
+        weight = stock if unit == "kg" else stock * float(p.get("unit_weight", 0) or 0)
+        cats.setdefault(cat, {"category": cat, "units": 0.0, "weight": 0.0, "value": 0.0, "sale_value": 0.0, "count": 0})
+        cats[cat]["units"] += stock
+        cats[cat]["weight"] += weight
+        cats[cat]["value"] += stock * float(p.get("cost_price", 0))
+        cats[cat]["sale_value"] += stock * float(p.get("sale_price", 0))
         cats[cat]["count"] += 1
-    return list(cats.values())
+    return sorted(list(cats.values()), key=lambda x: x["weight"], reverse=True)
 
 
 @api.get("/reports/production")
