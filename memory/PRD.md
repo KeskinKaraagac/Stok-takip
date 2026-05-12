@@ -19,6 +19,7 @@
 ## Implemented (v1 – Feb 2026)
 ### Auth & Users
 - /api/auth/{register, login, logout, me}; httpOnly cookies + Bearer fallback
+- /api/auth/forgot-password & /api/auth/reset-password (token-based, 1h expiry, single-use)
 - Auto admin seed (admin@stoktakip.com / Admin123!)
 - /api/users CRUD (admin only) with role switching
 
@@ -27,6 +28,7 @@
 - Customers: detail view aggregates sales & total
 - Productions: stock += quantity, creates `uretim` movement
 - Sales: multi-line POS-style; stock validation; -=quantity per item; `satis` movements
+- **Sales receipt PDF** at `/api/sales/{id}/receipt` (reportlab, A5)
 - Stock: `/stock/adjust` (manuel/fire/iade); rejects negative stock; movement log
 
 ### Dashboard & Reports
@@ -38,18 +40,17 @@
 Login, Register, Dashboard, Ürün Kontrolü, Üretim Girişi, Müşteriler, Günlük Satış, Stok Durumu, Raporlar, Ayarlar
 
 ## Tests
-- 38/38 pytest backend tests pass — `/app/backend/tests/backend_test.py`
-- Frontend smoke-tested across 6 main pages
+- 48/48 pytest backend tests pass (38 base + 10 for new features) — `/app/backend/tests/`
+- Frontend smoke-tested across all main pages
 
 ## Backlog (P0/P1/P2)
 - **P1**: Filter `active` flag in /customers (currently returns all); add `active_only` query param
-- **P1**: PDF receipt printing for Sales
-- **P2**: Password reset flow (`/auth/forgot-password`, `/auth/reset-password`)
+- **P1**: Gate `dev_token` in `/auth/forgot-password` behind `DEV_MODE` env flag; wire real email sender (Resend/SendGrid)
+- **P2**: Shadcn Calendar/Popover date picker on Sales page (replace native input)
 - **P2**: Excel (xlsx) export instead of CSV
 - **P2**: Audit log per user / activity history
 - **P2**: Multi-currency support and tax (KDV) calculations
-- **P2**: Direct deep-links for /productions, /users routes
-- **P2**: Refactor monolithic server.py into routers/services
+- **P2**: Refactor monolithic server.py (~1029 lines) into routers/services
 
 ## Test Credentials
 - Admin: `admin@stoktakip.com` / `Admin123!`
