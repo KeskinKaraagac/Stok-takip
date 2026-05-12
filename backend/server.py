@@ -1,89 +1,871 @@
-from fastapi import FastAPI, APIRouter
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
-from datetime import datetime, timezone
-
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / ".env")
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
+import os
+import uuid
+import logging
+import bcrypt
+import jwt as pyjwt
+from datetime import datetime, timezone, timedelta, date
+from typing import List, Optional, Literal
+
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query
+from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
+
+
+# ----- Mongo Setup -----
+mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[os.environ["DB_NAME"]]
 
-# Create the main app without a prefix
-app = FastAPI()
+# ----- App Setup -----
+app = FastAPI(title="Stok-Üretim-Satış API")
+api = APIRouter(prefix="/api")
 
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("stoktakip")
+
+# ----- Constants -----
+JWT_ALGORITHM = "HS256"
+ROLE_ADMIN = "admin"
+ROLE_STAFF = "personel"
+ROLE_VIEWER = "rapor"
+ALL_ROLES = [ROLE_ADMIN, ROLE_STAFF, ROLE_VIEWER]
+WRITE_ROLES = [ROLE_ADMIN, ROLE_STAFF]
 
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+# ----- Helpers -----
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc)
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
 
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
+def iso(dt) -> str:
+    if isinstance(dt, datetime):
+        return dt.isoformat()
+    if isinstance(dt, date):
+        return datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc).isoformat()
+    return dt
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def create_token(sub: str, email: str, role: str, kind: str, minutes: int = 60 * 24 * 7) -> str:
+    payload = {
+        "sub": sub,
+        "email": email,
+        "role": role,
+        "type": kind,
+        "exp": now_utc() + timedelta(minutes=minutes),
+    }
+    return pyjwt.encode(payload, os.environ["JWT_SECRET"], algorithm=JWT_ALGORITHM)
+
+
+# ----- Models -----
+class UserPublic(BaseModel):
+    id: str
+    email: EmailStr
+    name: str
+    role: str
+    active: bool = True
+    created_at: str
+
+
+class RegisterIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6)
+    name: str = Field(min_length=1)
+    role: Optional[str] = ROLE_STAFF
+
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class ProductIn(BaseModel):
+    name: str
+    code: str
+    category: Optional[str] = ""
+    unit: Literal["kg", "adet", "koli"] = "adet"
+    unit_weight: float = 0.0
+    sale_price: float = 0.0
+    cost_price: float = 0.0
+    current_stock: float = 0.0
+    min_stock: float = 0.0
+    shelf_life_days: int = 0
+    production_date: Optional[str] = None
+    expiry_date: Optional[str] = None
+    active: bool = True
+    notes: Optional[str] = ""
+
+
+class ProductOut(ProductIn):
+    id: str
+    created_at: str
+    updated_at: str
+
+
+class ProductionIn(BaseModel):
+    date: str
+    product_id: str
+    quantity: float
+    unit: str
+    lot_number: Optional[str] = ""
+    cost: float = 0.0
+    description: Optional[str] = ""
+
+
+class CustomerIn(BaseModel):
+    name: str
+    phone: Optional[str] = ""
+    email: Optional[str] = ""
+    address: Optional[str] = ""
+    tax_no: Optional[str] = ""
+    customer_type: Optional[str] = "Bireysel"
+    active: bool = True
+    notes: Optional[str] = ""
+
+
+class SaleItemIn(BaseModel):
+    product_id: str
+    quantity: float
+    unit_price: float
+
+
+class SaleIn(BaseModel):
+    date: str
+    customer_id: str
+    items: List[SaleItemIn]
+    discount: float = 0.0
+    payment_status: Literal["odendi", "bekliyor", "kismi"] = "bekliyor"
+    description: Optional[str] = ""
+
+
+class StockAdjustIn(BaseModel):
+    product_id: str
+    movement_type: Literal["manuel", "fire", "iade"]
+    quantity: float  # positive = in, negative = out
+    description: Optional[str] = ""
+
+
+# ----- Auth Dependencies -----
+async def get_current_user(request: Request) -> dict:
+    token = request.cookies.get("access_token")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if not token:
+        raise HTTPException(status_code=401, detail="Oturum açılmamış")
+    try:
+        payload = pyjwt.decode(token, os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="Geçersiz token tipi")
+        user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+        if not user or not user.get("active", True):
+            raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı")
+        return user
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Oturum süresi doldu")
+    except pyjwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Geçersiz token")
+
+
+def require_roles(*roles):
+    async def dep(user: dict = Depends(get_current_user)):
+        if user["role"] not in roles:
+            raise HTTPException(status_code=403, detail="Yetkisiz erişim")
+        return user
+    return dep
+
+
+# ----- Cookie helper -----
+def set_auth_cookies(response: Response, access: str, refresh: str):
+    response.set_cookie("access_token", access, httponly=True, secure=False, samesite="lax", max_age=60 * 60 * 24, path="/")
+    response.set_cookie("refresh_token", refresh, httponly=True, secure=False, samesite="lax", max_age=60 * 60 * 24 * 7, path="/")
+
+
+def clear_auth_cookies(response: Response):
+    response.delete_cookie("access_token", path="/")
+    response.delete_cookie("refresh_token", path="/")
+
+
+# ===== AUTH ROUTES =====
+@api.post("/auth/register")
+async def register(payload: RegisterIn, response: Response):
+    email = payload.email.lower().strip()
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Bu e-posta zaten kayıtlı")
+    role = payload.role if payload.role in ALL_ROLES else ROLE_STAFF
+    user = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "name": payload.name,
+        "role": role,
+        "active": True,
+        "password_hash": hash_password(payload.password),
+        "created_at": now_utc().isoformat(),
+    }
+    await db.users.insert_one(user)
+    access = create_token(user["id"], user["email"], user["role"], "access", 60 * 24)
+    refresh = create_token(user["id"], user["email"], user["role"], "refresh", 60 * 24 * 7)
+    set_auth_cookies(response, access, refresh)
+    user.pop("password_hash", None)
+    user.pop("_id", None)
+    return {"user": user, "access_token": access}
+
+
+@api.post("/auth/login")
+async def login(payload: LoginIn, response: Response):
+    email = payload.email.lower().strip()
+    user = await db.users.find_one({"email": email})
+    if not user or not verify_password(payload.password, user.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="E-posta veya şifre hatalı")
+    if not user.get("active", True):
+        raise HTTPException(status_code=403, detail="Hesap pasif")
+    access = create_token(user["id"], user["email"], user["role"], "access", 60 * 24)
+    refresh = create_token(user["id"], user["email"], user["role"], "refresh", 60 * 24 * 7)
+    set_auth_cookies(response, access, refresh)
+    user.pop("password_hash", None)
+    user.pop("_id", None)
+    return {"user": user, "access_token": access}
+
+
+@api.post("/auth/logout")
+async def logout(response: Response):
+    clear_auth_cookies(response)
+    return {"ok": True}
+
+
+@api.get("/auth/me")
+async def me(user: dict = Depends(get_current_user)):
+    return user
+
+
+# ===== PRODUCTS =====
+@api.get("/products")
+async def list_products(active_only: bool = False, user: dict = Depends(get_current_user)):
+    q = {"active": True} if active_only else {}
+    docs = await db.products.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    return docs
+
+
+@api.post("/products")
+async def create_product(payload: ProductIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+    exists = await db.products.find_one({"code": payload.code})
+    if exists:
+        raise HTTPException(status_code=400, detail="Bu ürün kodu zaten mevcut")
+    now = now_utc().isoformat()
+    doc = payload.model_dump()
+    doc.update({"id": str(uuid.uuid4()), "created_at": now, "updated_at": now})
+    await db.products.insert_one(doc.copy())
+    doc.pop("_id", None)
+    # Initial stock movement
+    if payload.current_stock and payload.current_stock != 0:
+        await db.stock_movements.insert_one({
+            "id": str(uuid.uuid4()),
+            "product_id": doc["id"],
+            "date": now,
+            "movement_type": "baslangic",
+            "in_qty": float(payload.current_stock),
+            "out_qty": 0.0,
+            "previous_stock": 0.0,
+            "new_stock": float(payload.current_stock),
+            "reference_id": doc["id"],
+            "description": "Başlangıç stoğu",
+        })
+    return doc
+
+
+@api.put("/products/{pid}")
+async def update_product(pid: str, payload: ProductIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+    existing = await db.products.find_one({"id": pid}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Ürün bulunamadı")
+    update = payload.model_dump()
+    update["updated_at"] = now_utc().isoformat()
+    # Stock change via manual edit -> movement
+    old_stock = float(existing.get("current_stock", 0))
+    new_stock = float(update.get("current_stock", old_stock))
+    await db.products.update_one({"id": pid}, {"$set": update})
+    if abs(new_stock - old_stock) > 1e-9:
+        await db.stock_movements.insert_one({
+            "id": str(uuid.uuid4()),
+            "product_id": pid,
+            "date": now_utc().isoformat(),
+            "movement_type": "manuel",
+            "in_qty": max(0.0, new_stock - old_stock),
+            "out_qty": max(0.0, old_stock - new_stock),
+            "previous_stock": old_stock,
+            "new_stock": new_stock,
+            "reference_id": pid,
+            "description": "Ürün düzenleme ile stok güncellemesi",
+        })
+    updated = await db.products.find_one({"id": pid}, {"_id": 0})
+    return updated
+
+
+@api.delete("/products/{pid}")
+async def soft_delete_product(pid: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
+    res = await db.products.update_one({"id": pid}, {"$set": {"active": False, "updated_at": now_utc().isoformat()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Ürün bulunamadı")
+    return {"ok": True}
+
+
+# ===== PRODUCTIONS =====
+@api.get("/productions")
+async def list_productions(start: Optional[str] = None, end: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q = {}
+    if start or end:
+        q["date"] = {}
+        if start:
+            q["date"]["$gte"] = start
+        if end:
+            q["date"]["$lte"] = end + "T23:59:59"
+    docs = await db.productions.find(q, {"_id": 0}).sort("date", -1).to_list(5000)
+    return docs
+
+
+@api.post("/productions")
+async def create_production(payload: ProductionIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+    product = await db.products.find_one({"id": payload.product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Ürün bulunamadı")
+    doc = payload.model_dump()
+    doc.update({"id": str(uuid.uuid4()), "created_at": now_utc().isoformat()})
+    await db.productions.insert_one(doc.copy())
+    doc.pop("_id", None)
+    # Update stock
+    old = float(product.get("current_stock", 0))
+    new = old + float(payload.quantity)
+    await db.products.update_one({"id": payload.product_id}, {"$set": {"current_stock": new, "updated_at": now_utc().isoformat()}})
+    await db.stock_movements.insert_one({
+        "id": str(uuid.uuid4()),
+        "product_id": payload.product_id,
+        "date": payload.date,
+        "movement_type": "uretim",
+        "in_qty": float(payload.quantity),
+        "out_qty": 0.0,
+        "previous_stock": old,
+        "new_stock": new,
+        "reference_id": doc["id"],
+        "description": f"Üretim - Lot: {payload.lot_number or '-'}",
+    })
+    return doc
+
+
+@api.delete("/productions/{pid}")
+async def delete_production(pid: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
+    prod = await db.productions.find_one({"id": pid}, {"_id": 0})
+    if not prod:
+        raise HTTPException(status_code=404, detail="Üretim kaydı bulunamadı")
+    # Reverse stock
+    product = await db.products.find_one({"id": prod["product_id"]}, {"_id": 0})
+    if product:
+        old = float(product.get("current_stock", 0))
+        new = old - float(prod["quantity"])
+        await db.products.update_one({"id": prod["product_id"]}, {"$set": {"current_stock": new}})
+        await db.stock_movements.insert_one({
+            "id": str(uuid.uuid4()),
+            "product_id": prod["product_id"],
+            "date": now_utc().isoformat(),
+            "movement_type": "iade",
+            "in_qty": 0.0,
+            "out_qty": float(prod["quantity"]),
+            "previous_stock": old,
+            "new_stock": new,
+            "reference_id": pid,
+            "description": "Üretim kaydı silindi",
+        })
+    await db.productions.delete_one({"id": pid})
+    return {"ok": True}
+
+
+# ===== CUSTOMERS =====
+@api.get("/customers")
+async def list_customers(user: dict = Depends(get_current_user)):
+    docs = await db.customers.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    return docs
+
+
+@api.get("/customers/{cid}")
+async def get_customer(cid: str, user: dict = Depends(get_current_user)):
+    c = await db.customers.find_one({"id": cid}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Müşteri bulunamadı")
+    sales = await db.sales.find({"customer_id": cid}, {"_id": 0}).sort("date", -1).to_list(2000)
+    total = sum(float(s.get("net_total", 0)) for s in sales)
+    return {"customer": c, "sales": sales, "total_sales": total}
+
+
+@api.post("/customers")
+async def create_customer(payload: CustomerIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+    doc = payload.model_dump()
+    doc.update({"id": str(uuid.uuid4()), "created_at": now_utc().isoformat()})
+    await db.customers.insert_one(doc.copy())
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/customers/{cid}")
+async def update_customer(cid: str, payload: CustomerIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+    res = await db.customers.update_one({"id": cid}, {"$set": payload.model_dump()})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Müşteri bulunamadı")
+    return await db.customers.find_one({"id": cid}, {"_id": 0})
+
+
+@api.delete("/customers/{cid}")
+async def delete_customer(cid: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
+    res = await db.customers.update_one({"id": cid}, {"$set": {"active": False}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Müşteri bulunamadı")
+    return {"ok": True}
+
+
+# ===== SALES =====
+@api.get("/sales")
+async def list_sales(start: Optional[str] = None, end: Optional[str] = None, customer_id: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q = {}
+    if start or end:
+        q["date"] = {}
+        if start:
+            q["date"]["$gte"] = start
+        if end:
+            q["date"]["$lte"] = end + "T23:59:59"
+    if customer_id:
+        q["customer_id"] = customer_id
+    docs = await db.sales.find(q, {"_id": 0}).sort("date", -1).to_list(5000)
+    return docs
+
+
+@api.post("/sales")
+async def create_sale(payload: SaleIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="Satış için en az bir ürün gerekli")
+    # Validate stock for each item
+    products = {}
+    for it in payload.items:
+        p = await db.products.find_one({"id": it.product_id}, {"_id": 0})
+        if not p:
+            raise HTTPException(status_code=404, detail=f"Ürün bulunamadı: {it.product_id}")
+        if float(p.get("current_stock", 0)) < float(it.quantity):
+            raise HTTPException(status_code=400, detail=f"Yetersiz stok: {p['name']} (mevcut {p['current_stock']})")
+        products[it.product_id] = p
+    customer = await db.customers.find_one({"id": payload.customer_id}, {"_id": 0})
+    if not customer:
+        raise HTTPException(status_code=404, detail="Müşteri bulunamadı")
+
+    items_out = []
+    gross = 0.0
+    for it in payload.items:
+        line_total = float(it.quantity) * float(it.unit_price)
+        gross += line_total
+        items_out.append({
+            "product_id": it.product_id,
+            "product_name": products[it.product_id]["name"],
+            "quantity": float(it.quantity),
+            "unit_price": float(it.unit_price),
+            "line_total": line_total,
+            "cost_price": float(products[it.product_id].get("cost_price", 0)),
+        })
+    discount = float(payload.discount or 0)
+    net = max(0.0, gross - discount)
+    sale_id = str(uuid.uuid4())
+    sale_doc = {
+        "id": sale_id,
+        "date": payload.date,
+        "customer_id": payload.customer_id,
+        "customer_name": customer["name"],
+        "items": items_out,
+        "gross_total": gross,
+        "discount": discount,
+        "net_total": net,
+        "payment_status": payload.payment_status,
+        "description": payload.description or "",
+        "created_at": now_utc().isoformat(),
+        "created_by": user["id"],
+    }
+    await db.sales.insert_one(sale_doc.copy())
+
+    # Apply stock movements
+    for it in payload.items:
+        p = products[it.product_id]
+        old = float(p.get("current_stock", 0))
+        new = old - float(it.quantity)
+        await db.products.update_one({"id": it.product_id}, {"$set": {"current_stock": new, "updated_at": now_utc().isoformat()}})
+        await db.stock_movements.insert_one({
+            "id": str(uuid.uuid4()),
+            "product_id": it.product_id,
+            "date": payload.date,
+            "movement_type": "satis",
+            "in_qty": 0.0,
+            "out_qty": float(it.quantity),
+            "previous_stock": old,
+            "new_stock": new,
+            "reference_id": sale_id,
+            "description": f"Satış - {customer['name']}",
+        })
+    sale_doc.pop("_id", None)
+    return sale_doc
+
+
+@api.delete("/sales/{sid}")
+async def delete_sale(sid: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
+    sale = await db.sales.find_one({"id": sid}, {"_id": 0})
+    if not sale:
+        raise HTTPException(status_code=404, detail="Satış bulunamadı")
+    # Reverse stock for each item
+    for it in sale.get("items", []):
+        p = await db.products.find_one({"id": it["product_id"]}, {"_id": 0})
+        if p:
+            old = float(p.get("current_stock", 0))
+            new = old + float(it["quantity"])
+            await db.products.update_one({"id": it["product_id"]}, {"$set": {"current_stock": new}})
+            await db.stock_movements.insert_one({
+                "id": str(uuid.uuid4()),
+                "product_id": it["product_id"],
+                "date": now_utc().isoformat(),
+                "movement_type": "iade",
+                "in_qty": float(it["quantity"]),
+                "out_qty": 0.0,
+                "previous_stock": old,
+                "new_stock": new,
+                "reference_id": sid,
+                "description": "Satış iptali / iade",
+            })
+    await db.sales.delete_one({"id": sid})
+    return {"ok": True}
+
+
+# ===== STOCK =====
+@api.get("/stock/movements")
+async def list_movements(product_id: Optional[str] = None, start: Optional[str] = None, end: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q = {}
+    if product_id:
+        q["product_id"] = product_id
+    if start or end:
+        q["date"] = {}
+        if start:
+            q["date"]["$gte"] = start
+        if end:
+            q["date"]["$lte"] = end + "T23:59:59"
+    docs = await db.stock_movements.find(q, {"_id": 0}).sort("date", -1).to_list(5000)
+    return docs
+
+
+@api.post("/stock/adjust")
+async def adjust_stock(payload: StockAdjustIn, user: dict = Depends(require_roles(*WRITE_ROLES))):
+    product = await db.products.find_one({"id": payload.product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Ürün bulunamadı")
+    old = float(product.get("current_stock", 0))
+    qty = float(payload.quantity)
+    new = old + qty
+    if new < 0:
+        raise HTTPException(status_code=400, detail="Stok negatife düşemez")
+    await db.products.update_one({"id": payload.product_id}, {"$set": {"current_stock": new, "updated_at": now_utc().isoformat()}})
+    mov_id = str(uuid.uuid4())
+    await db.stock_movements.insert_one({
+        "id": mov_id,
+        "product_id": payload.product_id,
+        "date": now_utc().isoformat(),
+        "movement_type": payload.movement_type,
+        "in_qty": max(0.0, qty),
+        "out_qty": max(0.0, -qty),
+        "previous_stock": old,
+        "new_stock": new,
+        "reference_id": mov_id,
+        "description": payload.description or "",
+    })
+    return {"ok": True, "previous_stock": old, "new_stock": new}
+
+
+# ===== DASHBOARD =====
+@api.get("/dashboard/summary")
+async def dashboard_summary(user: dict = Depends(get_current_user)):
+    products = await db.products.find({"active": True}, {"_id": 0}).to_list(5000)
+    total_products = len(products)
+    total_stock_units = sum(float(p.get("current_stock", 0)) for p in products)
+    total_stock_value_cost = sum(float(p.get("current_stock", 0)) * float(p.get("cost_price", 0)) for p in products)
+    total_stock_value_sale = sum(float(p.get("current_stock", 0)) * float(p.get("sale_price", 0)) for p in products)
+
+    today = now_utc().date().isoformat()
+    month_start = (now_utc().replace(day=1)).date().isoformat()
+
+    sales_today = await db.sales.find({"date": {"$gte": today, "$lte": today + "T23:59:59"}}, {"_id": 0}).to_list(5000)
+    sales_month = await db.sales.find({"date": {"$gte": month_start}}, {"_id": 0}).to_list(5000)
+    today_total = sum(float(s.get("net_total", 0)) for s in sales_today)
+    month_total = sum(float(s.get("net_total", 0)) for s in sales_month)
+
+    # Low stock products
+    low_stock = [p for p in products if float(p.get("current_stock", 0)) <= float(p.get("min_stock", 0)) and float(p.get("min_stock", 0)) > 0]
+
+    # Shelf-life warning (expiring in next 7 days or expired)
+    soon = (now_utc() + timedelta(days=7)).date().isoformat()
+    expiring = []
+    for p in products:
+        ed = p.get("expiry_date")
+        if ed and ed <= soon:
+            expiring.append(p)
+
+    # Top 5 selling products (all-time by quantity)
+    all_sales = await db.sales.find({}, {"_id": 0}).to_list(10000)
+    sold_map = {}
+    for s in all_sales:
+        for it in s.get("items", []):
+            key = it["product_id"]
+            sold_map.setdefault(key, {"product_id": key, "product_name": it.get("product_name", ""), "quantity": 0.0, "revenue": 0.0})
+            sold_map[key]["quantity"] += float(it.get("quantity", 0))
+            sold_map[key]["revenue"] += float(it.get("line_total", 0))
+    top5 = sorted(sold_map.values(), key=lambda x: x["quantity"], reverse=True)[:5]
+
+    # Recent productions & sales
+    recent_prod = await db.productions.find({}, {"_id": 0}).sort("created_at", -1).to_list(5)
+    recent_sales = await db.sales.find({}, {"_id": 0}).sort("created_at", -1).to_list(5)
+
+    # 14-day sales trend
+    trend = []
+    for i in range(13, -1, -1):
+        d = (now_utc().date() - timedelta(days=i)).isoformat()
+        day_sales = [s for s in all_sales if (s.get("date", "") or "")[:10] == d]
+        trend.append({"date": d, "total": sum(float(s.get("net_total", 0)) for s in day_sales)})
+
+    return {
+        "total_products": total_products,
+        "total_stock_units": total_stock_units,
+        "total_stock_value_cost": total_stock_value_cost,
+        "total_stock_value_sale": total_stock_value_sale,
+        "today_sales": today_total,
+        "month_sales": month_total,
+        "low_stock_products": low_stock,
+        "expiring_products": expiring,
+        "top_products": top5,
+        "recent_productions": recent_prod,
+        "recent_sales": recent_sales,
+        "sales_trend": trend,
+    }
+
+
+# ===== REPORTS =====
+@api.get("/reports/stock")
+async def report_stock(user: dict = Depends(get_current_user)):
+    products = await db.products.find({"active": True}, {"_id": 0}).to_list(5000)
+    rows = []
+    for p in products:
+        stock = float(p.get("current_stock", 0))
+        cost = float(p.get("cost_price", 0))
+        sale = float(p.get("sale_price", 0))
+        rows.append({
+            "id": p["id"],
+            "name": p["name"],
+            "code": p["code"],
+            "category": p.get("category", ""),
+            "unit": p.get("unit", ""),
+            "current_stock": stock,
+            "cost_price": cost,
+            "sale_price": sale,
+            "stock_value_cost": stock * cost,
+            "stock_value_sale": stock * sale,
+        })
+    return {
+        "rows": rows,
+        "total_cost_value": sum(r["stock_value_cost"] for r in rows),
+        "total_sale_value": sum(r["stock_value_sale"] for r in rows),
+        "gross_profit_potential": sum(r["stock_value_sale"] - r["stock_value_cost"] for r in rows),
+    }
+
+
+@api.get("/reports/category-distribution")
+async def report_category(user: dict = Depends(get_current_user)):
+    products = await db.products.find({"active": True}, {"_id": 0}).to_list(5000)
+    cats = {}
+    for p in products:
+        cat = p.get("category") or "Diğer"
+        cats.setdefault(cat, {"category": cat, "units": 0.0, "value": 0.0, "count": 0})
+        cats[cat]["units"] += float(p.get("current_stock", 0))
+        cats[cat]["value"] += float(p.get("current_stock", 0)) * float(p.get("cost_price", 0))
+        cats[cat]["count"] += 1
+    return list(cats.values())
+
+
+@api.get("/reports/production")
+async def report_production(start: Optional[str] = None, end: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q = {}
+    if start or end:
+        q["date"] = {}
+        if start:
+            q["date"]["$gte"] = start
+        if end:
+            q["date"]["$lte"] = end + "T23:59:59"
+    prods = await db.productions.find(q, {"_id": 0}).to_list(10000)
+    by_day = {}
+    by_product = {}
+    for p in prods:
+        d = (p.get("date") or "")[:10]
+        by_day.setdefault(d, 0.0)
+        by_day[d] += float(p.get("quantity", 0))
+        pid = p["product_id"]
+        by_product.setdefault(pid, {"product_id": pid, "quantity": 0.0})
+        by_product[pid]["quantity"] += float(p.get("quantity", 0))
+    # Attach product names
+    pmap = {pp["id"]: pp["name"] for pp in await db.products.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(5000)}
+    for k in by_product:
+        by_product[k]["product_name"] = pmap.get(k, "Bilinmiyor")
+    total = sum(float(p.get("quantity", 0)) for p in prods)
+    days = max(1, len(by_day))
+    return {
+        "by_day": [{"date": k, "quantity": v} for k, v in sorted(by_day.items())],
+        "by_product": list(by_product.values()),
+        "total": total,
+        "daily_avg": total / days,
+        "weekly_avg": total / max(1, days / 7),
+        "monthly_avg": total / max(1, days / 30),
+    }
+
+
+@api.get("/reports/sales")
+async def report_sales(start: Optional[str] = None, end: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q = {}
+    if start or end:
+        q["date"] = {}
+        if start:
+            q["date"]["$gte"] = start
+        if end:
+            q["date"]["$lte"] = end + "T23:59:59"
+    sales = await db.sales.find(q, {"_id": 0}).to_list(10000)
+    by_day = {}
+    by_product = {}
+    by_customer = {}
+    for s in sales:
+        d = (s.get("date") or "")[:10]
+        by_day.setdefault(d, {"date": d, "total": 0.0, "count": 0})
+        by_day[d]["total"] += float(s.get("net_total", 0))
+        by_day[d]["count"] += 1
+        cid = s.get("customer_id")
+        by_customer.setdefault(cid, {"customer_id": cid, "customer_name": s.get("customer_name", ""), "revenue": 0.0, "count": 0})
+        by_customer[cid]["revenue"] += float(s.get("net_total", 0))
+        by_customer[cid]["count"] += 1
+        for it in s.get("items", []):
+            pid = it["product_id"]
+            by_product.setdefault(pid, {"product_id": pid, "product_name": it.get("product_name", ""), "quantity": 0.0, "revenue": 0.0, "cost": 0.0})
+            by_product[pid]["quantity"] += float(it.get("quantity", 0))
+            by_product[pid]["revenue"] += float(it.get("line_total", 0))
+            by_product[pid]["cost"] += float(it.get("quantity", 0)) * float(it.get("cost_price", 0))
+    total = sum(float(s.get("net_total", 0)) for s in sales)
+    days = max(1, len(by_day))
+    cogs = sum(p["cost"] for p in by_product.values())
+    return {
+        "by_day": sorted(by_day.values(), key=lambda x: x["date"]),
+        "by_product": sorted(by_product.values(), key=lambda x: x["revenue"], reverse=True),
+        "by_customer": sorted(by_customer.values(), key=lambda x: x["revenue"], reverse=True),
+        "total": total,
+        "count": len(sales),
+        "daily_avg": total / days,
+        "weekly_avg": total / max(1, days / 7),
+        "monthly_avg": total / max(1, days / 30),
+        "gross_profit": total - cogs,
+        "cogs": cogs,
+    }
+
+
+# ===== USERS (admin) =====
+@api.get("/users")
+async def list_users(user: dict = Depends(require_roles(ROLE_ADMIN))):
+    docs = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
+    return docs
+
+
+@api.put("/users/{uid}")
+async def update_user(uid: str, payload: dict, user: dict = Depends(require_roles(ROLE_ADMIN))):
+    allowed = {k: v for k, v in payload.items() if k in ["name", "role", "active"]}
+    if "role" in allowed and allowed["role"] not in ALL_ROLES:
+        raise HTTPException(status_code=400, detail="Geçersiz rol")
+    res = await db.users.update_one({"id": uid}, {"$set": allowed})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+    u = await db.users.find_one({"id": uid}, {"_id": 0, "password_hash": 0})
+    return u
+
+
+@api.delete("/users/{uid}")
+async def delete_user(uid: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
+    if uid == user["id"]:
+        raise HTTPException(status_code=400, detail="Kendi hesabınızı silemezsiniz")
+    res = await db.users.delete_one({"id": uid})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+    return {"ok": True}
+
+
+# ===== Health =====
+@api.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"status": "ok", "service": "Stok-Üretim-Satış API"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
-app.include_router(api_router)
+# ----- Register router + CORS -----
+app.include_router(api)
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+
+# ----- Startup: seed admin + indexes -----
+@app.on_event("startup")
+async def startup_event():
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.users.create_index("id", unique=True)
+        await db.products.create_index("id", unique=True)
+        await db.products.create_index("code")
+        await db.customers.create_index("id", unique=True)
+        await db.productions.create_index("id", unique=True)
+        await db.sales.create_index("id", unique=True)
+        await db.stock_movements.create_index("id", unique=True)
+    except Exception as e:
+        logger.warning(f"Index creation: {e}")
+
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@stoktakip.com").lower()
+    admin_pw = os.environ.get("ADMIN_PASSWORD", "Admin123!")
+    existing = await db.users.find_one({"email": admin_email})
+    if existing is None:
+        await db.users.insert_one({
+            "id": str(uuid.uuid4()),
+            "email": admin_email,
+            "name": "Admin",
+            "role": ROLE_ADMIN,
+            "active": True,
+            "password_hash": hash_password(admin_pw),
+            "created_at": now_utc().isoformat(),
+        })
+        logger.info(f"Admin user seeded: {admin_email}")
+    elif not verify_password(admin_pw, existing.get("password_hash", "")):
+        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_pw), "role": ROLE_ADMIN, "active": True}})
+        logger.info(f"Admin password refreshed: {admin_email}")
+
 
 @app.on_event("shutdown")
-async def shutdown_db_client():
+async def shutdown_event():
     client.close()
