@@ -84,10 +84,6 @@ export default function Login() {
             </Link>
           </div>
         </form>
-        <div className="text-center text-sm text-slate-500 mt-6">
-         
-          </Link>
-        </div>
       </div>
     </div>
   );
