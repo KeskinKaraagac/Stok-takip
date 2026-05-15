@@ -26,6 +26,7 @@ const MENU = [
   { to: "/sales", key: "sales", icon: ShoppingCart, roles: ["admin", "personel"] },
   { to: "/stock", key: "stock", icon: Layers, roles: ["admin", "personel", "rapor"] },
   { to: "/reports", key: "reports", icon: BarChart3, roles: ["admin", "personel", "rapor"] },
+  { to: "/my-settings", key: "mySettings", icon: Settings, roles: ["admin", "personel", "rapor"] },
   { to: "/settings", key: "settings", icon: Settings, roles: ["admin"] },
 ];
 
