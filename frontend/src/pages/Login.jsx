@@ -85,9 +85,7 @@ export default function Login() {
           </div>
         </form>
         <div className="text-center text-sm text-slate-500 mt-6">
-          Hesabınız yok mu?{" "}
-          <Link to="/register" className="text-[#0047AB] hover:underline" data-testid="register-link">
-            Kayıt Ol
+         
           </Link>
         </div>
       </div>
