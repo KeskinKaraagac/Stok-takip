@@ -374,7 +374,11 @@ def clear_auth_cookies(response: Response):
 
 # ===== AUTH ROUTES =====
 @api.post("/auth/register")
-async def register(payload: RegisterIn, response: Response):
+async def register(
+    payload: RegisterIn,
+    response: Response,
+    admin: dict = Depends(require_permission("users.manage"))
+):
     email = payload.email.lower().strip()
     existing = await db.users.find_one({"email": email})
     if existing:
@@ -412,8 +416,7 @@ async def login(payload: LoginIn, response: Response):
     refresh = create_token(user["id"], user["email"], user["role"], "refresh", 60 * 24 * 7)
     set_auth_cookies(response, access, refresh)
     user.pop("password_hash", None)
-    user.pop("_id", None)
-    return {"user": user, "access_token": access}
+  return {"user": user}
 
 
 @api.post("/auth/logout")
