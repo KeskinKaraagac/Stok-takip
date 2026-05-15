@@ -40,13 +40,18 @@ db = client[os.environ["DB_NAME"]]
 
 # ----- App Setup -----
 app = FastAPI(title="Stok-Üretim-Satış API")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://stok-takip-lked.vercel.app",
+        "https://stok-takip-lked-git-dev-keskin-s-projects.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 api = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
