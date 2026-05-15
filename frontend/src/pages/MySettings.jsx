@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import api from "../api";
+import api from "../lib/api";
 
 export default function MySettings() {
   const [form, setForm] = useState({
