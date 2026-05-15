@@ -6,7 +6,6 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout";
 import MySettings from "./pages/MySettings";
 import Login from "./pages/Login";
-import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
@@ -27,7 +26,6 @@ function App() {
           <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
           <Route path="/my-settings" element={<MySettings />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
