@@ -441,6 +441,70 @@ const [createForm, setCreateForm] = useState({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+  <DialogContent className="rounded-sm max-w-md">
+    <DialogHeader>
+      <DialogTitle>Create User</DialogTitle>
+      <DialogDescription>Create a new user account.</DialogDescription>
+    </DialogHeader>
+
+    <div className="space-y-3">
+      <div>
+        <Label className="text-xs uppercase tracking-wider text-slate-500">Name</Label>
+        <Input
+          value={createForm.name}
+          onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+          className="rounded-sm mt-1"
+        />
+      </div>
+
+      <div>
+        <Label className="text-xs uppercase tracking-wider text-slate-500">Email</Label>
+        <Input
+          value={createForm.email}
+          onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+          className="rounded-sm mt-1"
+        />
+      </div>
+
+      <div>
+        <Label className="text-xs uppercase tracking-wider text-slate-500">Password</Label>
+        <Input
+          type="password"
+          value={createForm.password}
+          onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+          className="rounded-sm mt-1"
+        />
+      </div>
+
+      <div>
+        <Label className="text-xs uppercase tracking-wider text-slate-500">Role</Label>
+        <Select
+          value={createForm.role}
+          onValueChange={(v) => setCreateForm({ ...createForm, role: v })}
+        >
+          <SelectTrigger className="rounded-sm mt-1">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="personel">{t("role_personel")}</SelectItem>
+            <SelectItem value="rapor">{t("role_rapor")}</SelectItem>
+            <SelectItem value="admin">{t("role_admin")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+
+    <DialogFooter>
+      <Button variant="outline" onClick={() => setCreateOpen(false)} className="rounded-sm">
+        {t("cancel")}
+      </Button>
+      <Button onClick={createUser} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm">
+        Create User
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
 
       <Dialog open={!!userEdit} onOpenChange={(o) => !o && setUserEdit(null)}>
         <DialogContent className="rounded-sm max-w-md" data-testid="user-edit-dialog">
