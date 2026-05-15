@@ -42,6 +42,14 @@ export default function Settings() {
   // User editor (admin editing other users)
   const [userEdit, setUserEdit] = useState(null);
   const [userForm, setUserForm] = useState({ name: "", email: "", role: "", password: "" });
+  const [createOpen, setCreateOpen] = useState(false);
+
+const [createForm, setCreateForm] = useState({
+  name: "",
+  email: "",
+  password: "",
+  role: "personel",
+});
 
   useEffect(() => {
     setCompanyForm({
