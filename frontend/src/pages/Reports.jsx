@@ -88,6 +88,26 @@ export default function Reports() {
     ]);
   };
 
+  const exportReport = (path, filename) => {
+    const params = {};
+    if (start) params.start = start;
+    if (end) params.end = end;
+    return downloadXlsx(path, filename, params).catch((e) => toast.error(formatApiError(e)));
+  };
+
+  const ExcelBtn = ({ path, filename }) => (
+    <div className="flex justify-end mb-3">
+      <Button
+        variant="outline"
+        onClick={() => exportReport(path, filename)}
+        className="rounded-sm"
+        data-testid={`excel-btn-${path.replace(/[^a-zA-Z0-9]/g, "-")}`}
+      >
+        <FileSpreadsheet className="w-4 h-4 mr-2" /> {t("excel_export")}
+      </Button>
+    </div>
+  );
+
   return (
     <div data-testid="reports-page" className="animate-fadeIn">
       <PageHeader title={t("reports")} subtitle={t("reports_subtitle")} />
@@ -130,8 +150,8 @@ export default function Reports() {
                 <Button variant="outline" onClick={exportStock} className="rounded-sm">
                   <Download className="w-4 h-4 mr-2" /> {t("csv")}
                 </Button>
-                <Button variant="outline" onClick={() => downloadXlsx("/export/stock.xlsx", "stok-raporu.xlsx").catch((e) => toast.error(formatApiError(e)))} className="rounded-sm">
-                  <FileSpreadsheet className="w-4 h-4 mr-2" /> {t("excel")}
+                <Button variant="outline" onClick={() => exportReport("/export/reports/stock.xlsx", "rapor-guncel-stok.xlsx")} className="rounded-sm" data-testid="excel-btn-stock">
+                  <FileSpreadsheet className="w-4 h-4 mr-2" /> {t("excel_export")}
                 </Button>
               </div>
               <div className="border border-slate-200 rounded-sm overflow-x-auto bg-white">
@@ -167,6 +187,7 @@ export default function Reports() {
         <TabsContent value="financial" className="mt-4">
           {stock && (
             <>
+              <ExcelBtn path="/export/reports/financial.xlsx" filename="rapor-mali-deger.xlsx" />
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <SummaryCard label={t("total_stock_fin_value")} value={formatCurrency(stock.total_cost_value)} accent />
                 <SummaryCard label={t("potential_sale_value")} value={formatCurrency(stock.total_sale_value)} />
@@ -216,6 +237,7 @@ export default function Reports() {
 
         {/* ===== DISTRIBUTION ===== */}
         <TabsContent value="distribution" className="mt-4">
+          <ExcelBtn path="/export/reports/distribution.xlsx" filename="rapor-dagilim.xlsx" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="border border-slate-200 rounded-sm p-5 bg-white">
               <h3 className="text-lg font-display font-medium mb-3">{t("category_stock_dist")}</h3>
@@ -259,6 +281,7 @@ export default function Reports() {
         {/* ===== PRODUCTION ===== */}
         <TabsContent value="production" className="mt-4">
           <DateRangeFilter start={start} end={end} setStart={setStart} setEnd={setEnd} t={t} />
+          <ExcelBtn path="/export/reports/production.xlsx" filename="rapor-uretim.xlsx" />
           {prod && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
@@ -315,6 +338,7 @@ export default function Reports() {
         {/* ===== SALES (Depo Çıkış) ===== */}
         <TabsContent value="sales" className="mt-4">
           <DateRangeFilter start={start} end={end} setStart={setStart} setEnd={setEnd} t={t} />
+          <ExcelBtn path="/export/reports/sales.xlsx" filename="rapor-cikis.xlsx" />
           {sales && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-4">

@@ -57,10 +57,10 @@ const [createForm, setCreateForm] = useState({
       email: createForm.email,
       password: createForm.password,
       role: createForm.role,
-      language: "en",
+      language: lang || "en",
     });
 
-    toast.success("User created successfully");
+    toast.success(t("toast_user_created"));
     setCreateOpen(false);
     setCreateForm({
       name: "",
@@ -326,18 +326,21 @@ const [createForm, setCreateForm] = useState({
       </div>
 
       <div className="border border-slate-200 rounded-sm bg-white overflow-x-auto" data-testid="users-table">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between p-5 border-b border-slate-200">
   <div>
     <h3 className="text-lg font-display font-medium">{t("user_management")}</h3>
     <p className="text-sm text-slate-500">{t("user_management_desc")}</p>
   </div>
 
-  <Button
-    onClick={() => setCreateOpen(true)}
-    className="bg-[#0047AB] hover:bg-[#003380] rounded-sm"
-  >
-    Create User
-  </Button>
+  {user?.role === "admin" && (
+    <Button
+      onClick={() => setCreateOpen(true)}
+      className="bg-[#0047AB] hover:bg-[#003380] rounded-sm"
+      data-testid="create-user-btn"
+    >
+      + {t("create_user")}
+    </Button>
+  )}
 </div>
         <table className="dense w-full">
           <thead><tr>
@@ -442,48 +445,52 @@ const [createForm, setCreateForm] = useState({
         </DialogContent>
       </Dialog>
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-  <DialogContent className="rounded-sm max-w-md">
+  <DialogContent className="rounded-sm max-w-md" data-testid="create-user-dialog">
     <DialogHeader>
-      <DialogTitle>Create User</DialogTitle>
-      <DialogDescription>Create a new user account.</DialogDescription>
+      <DialogTitle>{t("create_user_title")}</DialogTitle>
+      <DialogDescription>{t("create_user_desc")}</DialogDescription>
     </DialogHeader>
 
     <div className="space-y-3">
       <div>
-        <Label className="text-xs uppercase tracking-wider text-slate-500">Name</Label>
+        <Label className="text-xs uppercase tracking-wider text-slate-500">{t("name")}</Label>
         <Input
           value={createForm.name}
           onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
           className="rounded-sm mt-1"
+          data-testid="create-user-name"
         />
       </div>
 
       <div>
-        <Label className="text-xs uppercase tracking-wider text-slate-500">Email</Label>
+        <Label className="text-xs uppercase tracking-wider text-slate-500">{t("email")}</Label>
         <Input
+          type="email"
           value={createForm.email}
           onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
           className="rounded-sm mt-1"
+          data-testid="create-user-email"
         />
       </div>
 
       <div>
-        <Label className="text-xs uppercase tracking-wider text-slate-500">Password</Label>
+        <Label className="text-xs uppercase tracking-wider text-slate-500">{t("password")}</Label>
         <Input
           type="password"
           value={createForm.password}
           onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
           className="rounded-sm mt-1"
+          data-testid="create-user-password"
         />
       </div>
 
       <div>
-        <Label className="text-xs uppercase tracking-wider text-slate-500">Role</Label>
+        <Label className="text-xs uppercase tracking-wider text-slate-500">{t("role")}</Label>
         <Select
           value={createForm.role}
           onValueChange={(v) => setCreateForm({ ...createForm, role: v })}
         >
-          <SelectTrigger className="rounded-sm mt-1">
+          <SelectTrigger className="rounded-sm mt-1" data-testid="create-user-role">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -499,8 +506,8 @@ const [createForm, setCreateForm] = useState({
       <Button variant="outline" onClick={() => setCreateOpen(false)} className="rounded-sm">
         {t("cancel")}
       </Button>
-      <Button onClick={createUser} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm">
-        Create User
+      <Button onClick={createUser} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm" data-testid="create-user-submit">
+        {t("create_user")}
       </Button>
     </DialogFooter>
   </DialogContent>

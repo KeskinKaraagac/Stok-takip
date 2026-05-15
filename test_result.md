@@ -101,3 +101,83 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  GitHub stok-takip repo enhancements:
+  1. App startup language must be English (default for new users)
+  2. Admin must be able to create new users from Settings menu
+  3. All sections in Reports tab must support Excel export
+  4. All operations must record who performed them (created_by/updated_by tracking)
+  5. Must not break Render & Vercel deployments
+
+backend:
+  - task: "Fix IndentationError in /auth/login response"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "Fixed indentation bug on line 419 (return statement) — backend was completely down before this. Added user serialization & access_token in response."
+
+  - task: "Track created_by / updated_by on all CRUD operations"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "Added stamp_created/stamp_updated helpers. Products, customers, productions, sales, stock_movements now include created_by_id, created_by_name, created_by_email. Stock movements include user_id/user_name."
+
+  - task: "New Excel export endpoints for Reports tabs"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "Added /api/export/reports/{stock,financial,distribution,production,sales}.xlsx multi-sheet endpoints + /api/export/stock-movements.xlsx."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.1"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Track created_by / updated_by on all CRUD operations"
+    - "New Excel export endpoints for Reports tabs"
+    - "Fix IndentationError in /auth/login response"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: |
+      Major fixes:
+      1) Backend was crashing due to IndentationError on /auth/login — fixed.
+      2) Added created_by/updated_by tracking across all CRUD endpoints.
+      3) Added 5 new Excel export endpoints under /api/export/reports/ + /api/export/stock-movements.xlsx.
+      Please test:
+       - POST /api/auth/login returns 200 with user
+       - Products/Customers/Productions/Sales CRUD: verify created_by_name / updated_by_name persisted
+       - Stock adjust: verify movement has user_name
+       - Excel endpoints respond 200 with valid xlsx Content-Type:
+         /api/export/reports/stock.xlsx
+         /api/export/reports/financial.xlsx
+         /api/export/reports/distribution.xlsx
+         /api/export/reports/production.xlsx (with/without ?start=&end=)
+         /api/export/reports/sales.xlsx (with/without ?start=&end=)
+         /api/export/stock-movements.xlsx
+      Use admin credentials from /app/memory/test_credentials.md.

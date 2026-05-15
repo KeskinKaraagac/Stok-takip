@@ -120,11 +120,12 @@ export default function Production() {
               <th>{t("unit")}</th>
               <th>{t("lot_short")}</th>
               <th>{t("description")}</th>
+              <th>{t("performed_by")}</th>
               <th className="text-right">{t("actions")}</th>
             </tr>
           </thead>
           <tbody>
-            {productions.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-8">{t("no_records")}</td></tr>}
+            {productions.length === 0 && <tr><td colSpan={8} className="text-center text-slate-400 py-8">{t("no_records")}</td></tr>}
             {productions.map((p) => (
               <tr key={p.id} data-testid={`production-row-${p.id}`}>
                 <td>{formatDate(p.date)}</td>
@@ -133,6 +134,7 @@ export default function Production() {
                 <td>{p.unit}</td>
                 <td>{p.lot_number || "-"}</td>
                 <td className="text-slate-600">{p.description || "-"}</td>
+                <td className="text-slate-600 text-xs">{p.created_by_name || "—"}</td>
                 <td className="text-right">
                   {canDelete && (
                     <button onClick={() => setConfirmDel(p)} className="text-slate-500 hover:text-red-600 transition-colors" data-testid={`delete-production-${p.id}`}>

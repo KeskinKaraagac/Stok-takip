@@ -198,6 +198,23 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def stamp_created(doc: dict, user: dict) -> dict:
+    """Attach created_by metadata."""
+    doc["created_by_id"] = user.get("id", "")
+    doc["created_by_name"] = user.get("name") or user.get("email", "")
+    doc["created_by_email"] = user.get("email", "")
+    return doc
+
+
+def stamp_updated(update: dict, user: dict) -> dict:
+    """Attach updated_by metadata."""
+    update["updated_by_id"] = user.get("id", "")
+    update["updated_by_name"] = user.get("name") or user.get("email", "")
+    update["updated_by_email"] = user.get("email", "")
+    update["updated_at"] = now_utc().isoformat()
+    return update
+
+
 def iso(dt) -> str:
     if isinstance(dt, datetime):
         return dt.isoformat()
@@ -539,6 +556,7 @@ async def create_product(payload: ProductIn, user: dict = Depends(require_permis
     now = now_utc().isoformat()
     doc = payload.model_dump()
     doc.update({"id": str(uuid.uuid4()), "created_at": now, "updated_at": now})
+    stamp_created(doc, user)
     await db.products.insert_one(doc.copy())
     doc.pop("_id", None)
     # Initial stock movement
@@ -554,6 +572,8 @@ async def create_product(payload: ProductIn, user: dict = Depends(require_permis
             "new_stock": float(payload.current_stock),
             "reference_id": doc["id"],
             "description": "Başlangıç stoğu",
+            "user_id": user.get("id", ""),
+            "user_name": user.get("name") or user.get("email", ""),
         })
     return doc
 
@@ -564,7 +584,7 @@ async def update_product(pid: str, payload: ProductIn, user: dict = Depends(requ
     if not existing:
         raise HTTPException(status_code=404, detail="Ürün bulunamadı")
     update = payload.model_dump()
-    update["updated_at"] = now_utc().isoformat()
+    stamp_updated(update, user)
     # Stock change via manual edit -> movement
     old_stock = float(existing.get("current_stock", 0))
     new_stock = float(update.get("current_stock", old_stock))
@@ -581,6 +601,8 @@ async def update_product(pid: str, payload: ProductIn, user: dict = Depends(requ
             "new_stock": new_stock,
             "reference_id": pid,
             "description": "Ürün düzenleme ile stok güncellemesi",
+            "user_id": user.get("id", ""),
+            "user_name": user.get("name") or user.get("email", ""),
         })
     updated = await db.products.find_one({"id": pid}, {"_id": 0})
     return updated
@@ -588,7 +610,15 @@ async def update_product(pid: str, payload: ProductIn, user: dict = Depends(requ
 
 @api.delete("/products/{pid}")
 async def soft_delete_product(pid: str, user: dict = Depends(require_permission("products.delete"))):
-    res = await db.products.update_one({"id": pid}, {"$set": {"active": False, "updated_at": now_utc().isoformat()}})
+    res = await db.products.update_one(
+        {"id": pid},
+        {"$set": {
+            "active": False,
+            "updated_at": now_utc().isoformat(),
+            "updated_by_id": user.get("id", ""),
+            "updated_by_name": user.get("name") or user.get("email", ""),
+        }},
+    )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Ürün bulunamadı")
     return {"ok": True}
@@ -615,6 +645,7 @@ async def create_production(payload: ProductionIn, user: dict = Depends(require_
         raise HTTPException(status_code=404, detail="Ürün bulunamadı")
     doc = payload.model_dump()
     doc.update({"id": str(uuid.uuid4()), "created_at": now_utc().isoformat()})
+    stamp_created(doc, user)
     await db.productions.insert_one(doc.copy())
     doc.pop("_id", None)
     # Update stock
@@ -632,6 +663,8 @@ async def create_production(payload: ProductionIn, user: dict = Depends(require_
         "new_stock": new,
         "reference_id": doc["id"],
         "description": f"Üretim - Lot: {payload.lot_number or '-'}",
+        "user_id": user.get("id", ""),
+        "user_name": user.get("name") or user.get("email", ""),
     })
     return doc
 
@@ -658,6 +691,8 @@ async def delete_production(pid: str, user: dict = Depends(require_permission("p
             "new_stock": new,
             "reference_id": pid,
             "description": "Üretim kaydı silindi",
+            "user_id": user.get("id", ""),
+            "user_name": user.get("name") or user.get("email", ""),
         })
     await db.productions.delete_one({"id": pid})
     return {"ok": True}
@@ -684,6 +719,7 @@ async def get_customer(cid: str, user: dict = Depends(get_current_user)):
 async def create_customer(payload: CustomerIn, user: dict = Depends(require_permission("customers.create"))):
     doc = payload.model_dump()
     doc.update({"id": str(uuid.uuid4()), "created_at": now_utc().isoformat()})
+    stamp_created(doc, user)
     await db.customers.insert_one(doc.copy())
     doc.pop("_id", None)
     return doc
@@ -691,7 +727,9 @@ async def create_customer(payload: CustomerIn, user: dict = Depends(require_perm
 
 @api.put("/customers/{cid}")
 async def update_customer(cid: str, payload: CustomerIn, user: dict = Depends(require_permission("customers.edit"))):
-    res = await db.customers.update_one({"id": cid}, {"$set": payload.model_dump()})
+    update = payload.model_dump()
+    stamp_updated(update, user)
+    res = await db.customers.update_one({"id": cid}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Müşteri bulunamadı")
     return await db.customers.find_one({"id": cid}, {"_id": 0})
@@ -699,7 +737,15 @@ async def update_customer(cid: str, payload: CustomerIn, user: dict = Depends(re
 
 @api.delete("/customers/{cid}")
 async def delete_customer(cid: str, user: dict = Depends(require_permission("customers.delete"))):
-    res = await db.customers.update_one({"id": cid}, {"$set": {"active": False}})
+    res = await db.customers.update_one(
+        {"id": cid},
+        {"$set": {
+            "active": False,
+            "updated_at": now_utc().isoformat(),
+            "updated_by_id": user.get("id", ""),
+            "updated_by_name": user.get("name") or user.get("email", ""),
+        }},
+    )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Müşteri bulunamadı")
     return {"ok": True}
@@ -780,6 +826,9 @@ async def create_sale(payload: SaleIn, user: dict = Depends(require_permission("
         "description": payload.description or "",
         "created_at": now_utc().isoformat(),
         "created_by": user["id"],
+        "created_by_id": user.get("id", ""),
+        "created_by_name": user.get("name") or user.get("email", ""),
+        "created_by_email": user.get("email", ""),
     }
     await db.sales.insert_one(sale_doc.copy())
 
@@ -800,6 +849,8 @@ async def create_sale(payload: SaleIn, user: dict = Depends(require_permission("
             "new_stock": new,
             "reference_id": sale_id,
             "description": f"Satış - {customer['name']}",
+            "user_id": user.get("id", ""),
+            "user_name": user.get("name") or user.get("email", ""),
         })
     sale_doc.pop("_id", None)
     return sale_doc
@@ -972,6 +1023,8 @@ async def delete_sale(sid: str, user: dict = Depends(require_permission("sales.d
                 "new_stock": new,
                 "reference_id": sid,
                 "description": "Satış iptali / iade",
+                "user_id": user.get("id", ""),
+                "user_name": user.get("name") or user.get("email", ""),
             })
     await db.sales.delete_one({"id": sid})
     return {"ok": True}
@@ -1016,6 +1069,8 @@ async def adjust_stock(payload: StockAdjustIn, user: dict = Depends(require_perm
         "new_stock": new,
         "reference_id": mov_id,
         "description": payload.description or "",
+        "user_id": user.get("id", ""),
+        "user_name": user.get("name") or user.get("email", ""),
     })
     return {"ok": True, "previous_stock": old, "new_stock": new}
 
@@ -1191,6 +1246,51 @@ def _fmt_date(v):
         return s
 
 
+def _write_sheet(ws, headers, rows, money_cols=(), number_cols=()):
+    """Write a single sheet with given headers/rows."""
+    for c, h in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=c, value=h)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = BORDER
+    for r_idx, row in enumerate(rows, start=2):
+        for c_idx, val in enumerate(row, start=1):
+            cell = ws.cell(row=r_idx, column=c_idx, value=val)
+            cell.border = BORDER
+            if c_idx in money_cols:
+                cell.number_format = '£#,##0.00'
+            elif c_idx in number_cols:
+                cell.number_format = '#,##0.00'
+    for col in range(1, len(headers) + 1):
+        letter = get_column_letter(col)
+        max_len = len(str(headers[col - 1]))
+        for r in rows:
+            v = r[col - 1] if col - 1 < len(r) else ""
+            ln = len(str(v)) if v is not None else 0
+            if ln > max_len:
+                max_len = ln
+        ws.column_dimensions[letter].width = min(max_len + 3, 40)
+    ws.freeze_panes = "A2"
+
+
+def _build_multi_xlsx(sheets):
+    """sheets: list of dicts {title, headers, rows, money_cols, number_cols}."""
+    wb = Workbook()
+    # remove default empty sheet
+    default_ws = wb.active
+    wb.remove(default_ws)
+    for s in sheets:
+        ws = wb.create_sheet(title=s["title"][:31])
+        _write_sheet(ws, s["headers"], s["rows"], s.get("money_cols", ()), s.get("number_cols", ()))
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+
+
 @api.get("/export/products.xlsx")
 async def export_products(user: dict = Depends(require_permission("products.view"))):
     products = await db.products.find({}, {"_id": 0}).sort("name", 1).to_list(5000)
@@ -1238,7 +1338,7 @@ async def export_sales(start: Optional[str] = None, end: Optional[str] = None, u
         if end:
             q["date"]["$lte"] = end + "T23:59:59"
     sales = await db.sales.find(q, {"_id": 0}).sort("date", -1).to_list(10000)
-    headers = ["Tarih", "Fiş No", "Müşteri", "Ürünler", "Brüt (£)", "İskonto (£)", "Net (£)", "Ödeme Durumu", "Açıklama"]
+    headers = ["Tarih", "Fiş No", "Müşteri", "Ürünler", "Brüt (£)", "İskonto (£)", "Net (£)", "Ödeme Durumu", "Açıklama", "Kullanıcı"]
     rows = []
     status_map = {"odendi": "Ödendi", "bekliyor": "Bekliyor", "kismi": "Kısmi"}
     for s in sales:
@@ -1253,6 +1353,7 @@ async def export_sales(start: Optional[str] = None, end: Optional[str] = None, u
             float(s.get("net_total", 0)),
             status_map.get(s.get("payment_status"), s.get("payment_status", "")),
             s.get("description", ""),
+            s.get("created_by_name", "") or s.get("created_by_email", ""),
         ])
     buf = _build_xlsx("Satışlar", headers, rows, money_cols=(5, 6, 7))
     return _xlsx_response(buf, "satislar.xlsx")
@@ -1269,7 +1370,7 @@ async def export_productions(start: Optional[str] = None, end: Optional[str] = N
             q["date"]["$lte"] = end + "T23:59:59"
     prods = await db.productions.find(q, {"_id": 0}).sort("date", -1).to_list(10000)
     pmap = {pp["id"]: pp["name"] for pp in await db.products.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(5000)}
-    headers = ["Tarih", "Ürün", "Miktar", "Birim", "Lot/Parti No", "Maliyet (£)", "Açıklama"]
+    headers = ["Tarih", "Ürün", "Miktar", "Birim", "Lot/Parti No", "Maliyet (£)", "Açıklama", "Kullanıcı"]
     rows = []
     for p in prods:
         rows.append([
@@ -1280,9 +1381,310 @@ async def export_productions(start: Optional[str] = None, end: Optional[str] = N
             p.get("lot_number", ""),
             float(p.get("cost", 0)),
             p.get("description", ""),
+            p.get("created_by_name", "") or p.get("created_by_email", ""),
         ])
     buf = _build_xlsx("Üretim", headers, rows, money_cols=(6,), number_cols=(3,))
     return _xlsx_response(buf, "uretim.xlsx")
+
+
+# ===== REPORTS EXCEL EXPORTS =====
+@api.get("/export/reports/stock.xlsx")
+async def export_report_stock(user: dict = Depends(require_permission("reports.view"))):
+    """Current Stock report — products + category summary."""
+    products = await db.products.find({"active": True}, {"_id": 0}).sort("name", 1).to_list(5000)
+    # Detail sheet
+    detail_headers = ["Ürün / Product", "Kod / Code", "Kategori / Category", "Birim / Unit", "Birim Ağırlık (kg)", "Stok / Stock", "Stok Ağırlığı (kg)", "Maliyet (£)", "Satış (£)", "Mali Değer (£)", "Satış Değeri (£)"]
+    detail_rows = []
+    cat_summary = {}
+    for p in products:
+        stock = float(p.get("current_stock", 0))
+        cost = float(p.get("cost_price", 0))
+        sale = float(p.get("sale_price", 0))
+        unit = (p.get("unit") or "").lower()
+        unit_w = float(p.get("unit_weight", 0) or 0)
+        weight = stock if unit == "kg" else stock * unit_w
+        detail_rows.append([
+            p.get("name", ""), p.get("code", ""), p.get("category", "") or "—",
+            p.get("unit", ""), unit_w, stock, weight, cost, sale, stock * cost, stock * sale,
+        ])
+        cat = p.get("category", "") or "—"
+        cat_summary.setdefault(cat, {"count": 0, "stock": 0.0, "weight": 0.0, "cost_val": 0.0, "sale_val": 0.0})
+        cat_summary[cat]["count"] += 1
+        cat_summary[cat]["stock"] += stock
+        cat_summary[cat]["weight"] += weight
+        cat_summary[cat]["cost_val"] += stock * cost
+        cat_summary[cat]["sale_val"] += stock * sale
+
+    cat_headers = ["Kategori / Category", "Ürün Sayısı", "Toplam Stok", "Toplam Ağırlık (kg)", "Mali Değer (£)", "Satış Değeri (£)"]
+    cat_rows = [[k, v["count"], v["stock"], v["weight"], v["cost_val"], v["sale_val"]] for k, v in sorted(cat_summary.items(), key=lambda x: -x[1]["weight"])]
+
+    buf = _build_multi_xlsx([
+        {"title": "Kategori Özet", "headers": cat_headers, "rows": cat_rows, "money_cols": (5, 6), "number_cols": (3, 4)},
+        {"title": "Ürün Detay", "headers": detail_headers, "rows": detail_rows, "money_cols": (8, 9, 10, 11), "number_cols": (5, 6, 7)},
+    ])
+    return _xlsx_response(buf, "rapor-guncel-stok.xlsx")
+
+
+@api.get("/export/reports/financial.xlsx")
+async def export_report_financial(user: dict = Depends(require_permission("reports.view"))):
+    """Financial value report — category breakdown + product detail."""
+    products = await db.products.find({"active": True}, {"_id": 0}).sort("name", 1).to_list(5000)
+    cats = {}
+    detail_rows = []
+    total_cost = 0.0
+    total_sale = 0.0
+    total_stock = 0.0
+    for p in products:
+        stock = float(p.get("current_stock", 0))
+        cost = float(p.get("cost_price", 0))
+        sale = float(p.get("sale_price", 0))
+        cost_v = stock * cost
+        sale_v = stock * sale
+        total_cost += cost_v
+        total_sale += sale_v
+        total_stock += stock
+        cat = p.get("category", "") or "—"
+        cats.setdefault(cat, {"count": 0, "stock": 0.0, "cost_val": 0.0, "sale_val": 0.0})
+        cats[cat]["count"] += 1
+        cats[cat]["stock"] += stock
+        cats[cat]["cost_val"] += cost_v
+        cats[cat]["sale_val"] += sale_v
+        detail_rows.append([
+            p.get("name", ""), p.get("code", ""), cat, p.get("unit", ""),
+            stock, cost, sale, cost_v, sale_v, sale_v - cost_v,
+        ])
+
+    cat_headers = ["Kategori / Category", "Ürün Sayısı", "Stok Adedi", "Mali Değer (£)", "Satış Değeri (£)", "Brüt Kâr Potansiyeli (£)"]
+    cat_rows = [[k, v["count"], v["stock"], v["cost_val"], v["sale_val"], v["sale_val"] - v["cost_val"]]
+                for k, v in sorted(cats.items(), key=lambda x: -x[1]["sale_val"])]
+    cat_rows.append(["TOPLAM", sum(v["count"] for v in cats.values()), total_stock, total_cost, total_sale, total_sale - total_cost])
+
+    detail_headers = ["Ürün", "Kod", "Kategori", "Birim", "Stok", "Maliyet (£)", "Satış (£)", "Mali Değer (£)", "Satış Değeri (£)", "Brüt Kâr (£)"]
+    buf = _build_multi_xlsx([
+        {"title": "Kategori Bazlı Mali Değer", "headers": cat_headers, "rows": cat_rows, "money_cols": (4, 5, 6), "number_cols": (3,)},
+        {"title": "Ürün Detay", "headers": detail_headers, "rows": detail_rows, "money_cols": (6, 7, 8, 9, 10), "number_cols": (5,)},
+    ])
+    return _xlsx_response(buf, "rapor-mali-deger.xlsx")
+
+
+@api.get("/export/reports/distribution.xlsx")
+async def export_report_distribution(user: dict = Depends(require_permission("reports.view"))):
+    """Category distribution + product stock chart data."""
+    products = await db.products.find({"active": True}, {"_id": 0}).sort("name", 1).to_list(5000)
+    cats = {}
+    prod_rows = []
+    for p in products:
+        unit = (p.get("unit") or "").lower()
+        stock = float(p.get("current_stock", 0))
+        weight = stock if unit == "kg" else stock * float(p.get("unit_weight", 0) or 0)
+        cat = p.get("category", "") or "—"
+        cats.setdefault(cat, {"count": 0, "stock": 0.0, "weight": 0.0})
+        cats[cat]["count"] += 1
+        cats[cat]["stock"] += stock
+        cats[cat]["weight"] += weight
+        prod_rows.append([p.get("name", ""), p.get("code", ""), cat, p.get("unit", ""), stock, weight])
+
+    total_weight = sum(v["weight"] for v in cats.values()) or 1.0
+    cat_headers = ["Kategori / Category", "Ürün Sayısı", "Stok Adedi", "Stok Ağırlığı (kg)", "Yüzde (%)"]
+    cat_rows = [[k, v["count"], v["stock"], v["weight"], round(v["weight"] / total_weight * 100, 2)]
+                for k, v in sorted(cats.items(), key=lambda x: -x[1]["weight"])]
+
+    prod_headers = ["Ürün", "Kod", "Kategori", "Birim", "Stok", "Ağırlık (kg)"]
+    buf = _build_multi_xlsx([
+        {"title": "Kategori Dağılımı", "headers": cat_headers, "rows": cat_rows, "number_cols": (3, 4, 5)},
+        {"title": "Ürün Stoğu", "headers": prod_headers, "rows": prod_rows, "number_cols": (5, 6)},
+    ])
+    return _xlsx_response(buf, "rapor-dagilim.xlsx")
+
+
+@api.get("/export/reports/production.xlsx")
+async def export_report_production(start: Optional[str] = None, end: Optional[str] = None, user: dict = Depends(require_permission("reports.view"))):
+    """Production summary report — daily breakdown + per-product totals + detail."""
+    q = {}
+    if start or end:
+        q["date"] = {}
+        if start:
+            q["date"]["$gte"] = start
+        if end:
+            q["date"]["$lte"] = end + "T23:59:59"
+    prods = await db.productions.find(q, {"_id": 0}).sort("date", -1).to_list(10000)
+    products_all = await db.products.find({}, {"_id": 0}).to_list(5000)
+    pmap = {pp["id"]: pp for pp in products_all}
+
+    def _wt(prod_doc, qty):
+        p = pmap.get(prod_doc.get("product_id"))
+        if not p:
+            return 0.0
+        unit = (p.get("unit") or "").lower()
+        if unit == "kg":
+            return float(qty)
+        return float(qty) * float(p.get("unit_weight", 0) or 0)
+
+    by_day = {}
+    by_product = {}
+    for p in prods:
+        d = (p.get("date") or "")[:10]
+        qty = float(p.get("quantity", 0))
+        wt = _wt(p, qty)
+        by_day.setdefault(d, {"quantity": 0.0, "weight": 0.0, "count": 0})
+        by_day[d]["quantity"] += qty
+        by_day[d]["weight"] += wt
+        by_day[d]["count"] += 1
+        pid = p["product_id"]
+        by_product.setdefault(pid, {"name": pmap.get(pid, {}).get("name", "—"), "quantity": 0.0, "weight": 0.0, "count": 0})
+        by_product[pid]["quantity"] += qty
+        by_product[pid]["weight"] += wt
+        by_product[pid]["count"] += 1
+
+    day_headers = ["Tarih / Date", "Kayıt Sayısı", "Toplam Adet", "Toplam Ağırlık (kg)"]
+    day_rows = [[_fmt_date(k), v["count"], v["quantity"], v["weight"]] for k, v in sorted(by_day.items())]
+
+    prod_headers = ["Ürün / Product", "Kayıt Sayısı", "Toplam Adet", "Toplam Ağırlık (kg)", "Ortalama Adet", "Ortalama Ağırlık"]
+    prod_rows = [[v["name"], v["count"], v["quantity"], v["weight"],
+                  (v["quantity"] / v["count"]) if v["count"] else 0,
+                  (v["weight"] / v["count"]) if v["count"] else 0]
+                 for v in sorted(by_product.values(), key=lambda x: -x["weight"])]
+
+    detail_headers = ["Tarih", "Ürün", "Miktar", "Birim", "Lot/Parti", "Maliyet (£)", "Açıklama", "Kullanıcı"]
+    detail_rows = []
+    for p in prods:
+        detail_rows.append([
+            _fmt_date(p.get("date")),
+            pmap.get(p.get("product_id"), {}).get("name", "—"),
+            float(p.get("quantity", 0)),
+            p.get("unit", ""),
+            p.get("lot_number", ""),
+            float(p.get("cost", 0)),
+            p.get("description", ""),
+            p.get("created_by_name", "") or p.get("created_by_email", ""),
+        ])
+
+    buf = _build_multi_xlsx([
+        {"title": "Günlük Üretim", "headers": day_headers, "rows": day_rows, "number_cols": (2, 3, 4)},
+        {"title": "Ürün Bazlı", "headers": prod_headers, "rows": prod_rows, "number_cols": (2, 3, 4, 5, 6)},
+        {"title": "Detay", "headers": detail_headers, "rows": detail_rows, "money_cols": (6,), "number_cols": (3,)},
+    ])
+    return _xlsx_response(buf, "rapor-uretim.xlsx")
+
+
+@api.get("/export/reports/sales.xlsx")
+async def export_report_sales(start: Optional[str] = None, end: Optional[str] = None, user: dict = Depends(require_permission("reports.view"))):
+    """Sales/exit summary — daily + per-customer + per-product + detail."""
+    q = {}
+    if start or end:
+        q["date"] = {}
+        if start:
+            q["date"]["$gte"] = start
+        if end:
+            q["date"]["$lte"] = end + "T23:59:59"
+    sales = await db.sales.find(q, {"_id": 0}).sort("date", -1).to_list(10000)
+    products_all = await db.products.find({}, {"_id": 0}).to_list(5000)
+    pmap = {pp["id"]: pp for pp in products_all}
+
+    def _item_weight(it):
+        if it.get("weight") is not None:
+            return float(it.get("weight", 0) or 0)
+        p = pmap.get(it.get("product_id"))
+        if not p:
+            return 0.0
+        unit = (p.get("unit") or "").lower()
+        if unit == "kg":
+            return float(it.get("quantity", 0))
+        return float(it.get("quantity", 0)) * float(p.get("unit_weight", 0) or 0)
+
+    by_day = {}
+    by_product = {}
+    by_customer = {}
+    for s in sales:
+        d = (s.get("date") or "")[:10]
+        sale_qty = sum(float(it.get("quantity", 0)) for it in s.get("items", []))
+        sale_wt = sum(_item_weight(it) for it in s.get("items", []))
+        net = float(s.get("net_total", 0))
+        by_day.setdefault(d, {"count": 0, "qty": 0.0, "wt": 0.0, "rev": 0.0})
+        by_day[d]["count"] += 1
+        by_day[d]["qty"] += sale_qty
+        by_day[d]["wt"] += sale_wt
+        by_day[d]["rev"] += net
+        cname = s.get("customer_name", "—")
+        cid = s.get("customer_id", "")
+        ck = cid or cname
+        by_customer.setdefault(ck, {"name": cname, "count": 0, "qty": 0.0, "wt": 0.0, "rev": 0.0})
+        by_customer[ck]["count"] += 1
+        by_customer[ck]["qty"] += sale_qty
+        by_customer[ck]["wt"] += sale_wt
+        by_customer[ck]["rev"] += net
+        for it in s.get("items", []):
+            pid = it["product_id"]
+            by_product.setdefault(pid, {"name": it.get("product_name", "—"), "qty": 0.0, "wt": 0.0, "rev": 0.0})
+            by_product[pid]["qty"] += float(it.get("quantity", 0))
+            by_product[pid]["wt"] += _item_weight(it)
+            by_product[pid]["rev"] += float(it.get("line_total", 0))
+
+    day_headers = ["Tarih / Date", "Çıkış Sayısı", "Toplam Adet", "Toplam Ağırlık (kg)", "Toplam Tutar (£)"]
+    day_rows = [[_fmt_date(k), v["count"], v["qty"], v["wt"], v["rev"]] for k, v in sorted(by_day.items())]
+
+    cust_headers = ["Müşteri / Customer", "Çıkış Sayısı", "Toplam Adet", "Toplam Ağırlık (kg)", "Toplam Tutar (£)"]
+    cust_rows = [[v["name"], v["count"], v["qty"], v["wt"], v["rev"]] for v in sorted(by_customer.values(), key=lambda x: -x["wt"])]
+
+    prod_headers = ["Ürün / Product", "Toplam Adet", "Toplam Ağırlık (kg)", "Toplam Tutar (£)"]
+    prod_rows = [[v["name"], v["qty"], v["wt"], v["rev"]] for v in sorted(by_product.values(), key=lambda x: -x["wt"])]
+
+    detail_headers = ["Tarih", "Fiş No", "Müşteri", "Ürünler", "Adet", "Ağırlık (kg)", "Brüt (£)", "İskonto (£)", "Net (£)", "Ödeme", "Kullanıcı"]
+    status_map = {"odendi": "Ödendi", "bekliyor": "Bekliyor", "kismi": "Kısmi"}
+    detail_rows = []
+    for s in sales:
+        items_str = "; ".join(f"{it.get('product_name','')} ×{float(it.get('quantity',0)):.2f}" for it in s.get("items", []))
+        total_qty = float(s.get("total_quantity", 0)) or sum(float(it.get("quantity", 0)) for it in s.get("items", []))
+        total_wt = float(s.get("total_weight", 0)) or sum(_item_weight(it) for it in s.get("items", []))
+        detail_rows.append([
+            _fmt_date(s.get("date")), s.get("id", "")[:8].upper(), s.get("customer_name", ""),
+            items_str, total_qty, total_wt,
+            float(s.get("gross_total", 0)), float(s.get("discount", 0)), float(s.get("net_total", 0)),
+            status_map.get(s.get("payment_status"), s.get("payment_status", "")),
+            s.get("created_by_name", "") or s.get("created_by_email", ""),
+        ])
+
+    buf = _build_multi_xlsx([
+        {"title": "Günlük Çıkış", "headers": day_headers, "rows": day_rows, "money_cols": (5,), "number_cols": (2, 3, 4)},
+        {"title": "Müşteri Bazlı", "headers": cust_headers, "rows": cust_rows, "money_cols": (5,), "number_cols": (2, 3, 4)},
+        {"title": "Ürün Bazlı", "headers": prod_headers, "rows": prod_rows, "money_cols": (4,), "number_cols": (2, 3)},
+        {"title": "Detay", "headers": detail_headers, "rows": detail_rows, "money_cols": (7, 8, 9), "number_cols": (5, 6)},
+    ])
+    return _xlsx_response(buf, "rapor-cikis.xlsx")
+
+
+@api.get("/export/stock-movements.xlsx")
+async def export_stock_movements(product_id: Optional[str] = None, start: Optional[str] = None, end: Optional[str] = None, user: dict = Depends(require_permission("stock.view"))):
+    """Stock movement history Excel export."""
+    q = {}
+    if product_id:
+        q["product_id"] = product_id
+    if start or end:
+        q["date"] = {}
+        if start:
+            q["date"]["$gte"] = start
+        if end:
+            q["date"]["$lte"] = end + "T23:59:59"
+    moves = await db.stock_movements.find(q, {"_id": 0}).sort("date", -1).to_list(10000)
+    pmap = {pp["id"]: pp["name"] for pp in await db.products.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(5000)}
+    type_map = {"uretim": "Üretim", "satis": "Satış / Çıkış", "manuel": "Manuel", "fire": "Fire", "iade": "İade", "baslangic": "Başlangıç"}
+    headers = ["Tarih / Date", "Ürün / Product", "Tip / Type", "Giriş", "Çıkış", "Önceki Stok", "Yeni Stok", "Açıklama", "Kullanıcı / User"]
+    rows = []
+    for m in moves:
+        rows.append([
+            _fmt_date(m.get("date")),
+            pmap.get(m.get("product_id"), "—"),
+            type_map.get(m.get("movement_type"), m.get("movement_type", "")),
+            float(m.get("in_qty", 0) or 0),
+            float(m.get("out_qty", 0) or 0),
+            float(m.get("previous_stock", 0) or 0),
+            float(m.get("new_stock", 0) or 0),
+            m.get("description", ""),
+            m.get("user_name", "") or "—",
+        ])
+    buf = _build_xlsx("Stok Hareketleri", headers, rows, number_cols=(4, 5, 6, 7))
+    return _xlsx_response(buf, "stok-hareketleri.xlsx")
+
 
 
 # ===== DASHBOARD =====

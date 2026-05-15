@@ -170,10 +170,11 @@ export default function Stock() {
                   <th>{t("previous_stock")}</th>
                   <th>{t("new_stock")}</th>
                   <th>{t("description")}</th>
+                  <th>{t("performed_by")}</th>
                 </tr>
               </thead>
               <tbody>
-                {movements.length === 0 && <tr><td colSpan={8} className="text-center text-slate-400 py-8">{t("no_movements")}</td></tr>}
+                {movements.length === 0 && <tr><td colSpan={9} className="text-center text-slate-400 py-8">{t("no_movements")}</td></tr>}
                 {movements.map((m) => (
                   <tr key={m.id}>
                     <td>{formatDateTime(m.date)}</td>
@@ -184,6 +185,7 @@ export default function Stock() {
                     <td className="tabular">{formatNumber(m.previous_stock, 0)}</td>
                     <td className="tabular font-semibold">{formatNumber(m.new_stock, 0)}</td>
                     <td className="text-slate-600">{m.description || "-"}</td>
+                    <td className="text-slate-600 text-xs">{m.user_name || "—"}</td>
                   </tr>
                 ))}
               </tbody>

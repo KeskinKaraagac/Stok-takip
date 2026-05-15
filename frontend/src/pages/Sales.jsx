@@ -177,10 +177,11 @@ export default function Sales() {
               <th>Toplam Adet</th>
               <th>Toplam kg</th>
               <th>Mali Değer</th>
+              <th>{t("performed_by")}</th>
             </tr>
           </thead>
           <tbody>
-            {sales.length === 0 && <tr><td colSpan={6} className="text-center text-slate-400 py-8">{t("no_records")}</td></tr>}
+            {sales.length === 0 && <tr><td colSpan={7} className="text-center text-slate-400 py-8">{t("no_records")}</td></tr>}
             {sales.map((s) => (
               <tr key={s.id} data-testid={`sale-row-${s.id}`} className="cursor-pointer" onClick={() => setReceipt(s)}>
                 <td>{formatDate(s.date)}</td>
@@ -189,6 +190,7 @@ export default function Sales() {
                 <td className="tabular">{formatNumber(s.total_quantity || s.items.reduce((a, b) => a + Number(b.quantity || 0), 0), 0)}</td>
                 <td className="tabular font-semibold">{formatNumber(s.total_weight || 0, 2)} kg</td>
                 <td className="tabular text-slate-500">{formatCurrency(s.net_total)}</td>
+                <td className="text-slate-600 text-xs">{s.created_by_name || "—"}</td>
               </tr>
             ))}
           </tbody>

@@ -277,6 +277,13 @@ const TRANSLATIONS = {
     deselect_all: "Tümünü Kaldır",
     delete_user_q: "Kullanıcı silinsin mi?",
     delete_user_desc: "silinecek.",
+    create_user: "Yeni Kullanıcı",
+    create_user_title: "Yeni Kullanıcı Oluştur",
+    create_user_desc: "Yeni bir kullanıcı hesabı oluşturun.",
+    password: "Şifre",
+    toast_user_created: "Kullanıcı oluşturuldu",
+    performed_by: "Kullanıcı",
+    excel_export: "Excel İndir",
   },
   en: {
     dashboard: "Dashboard",
@@ -543,13 +550,20 @@ const TRANSLATIONS = {
     deselect_all: "Deselect All",
     delete_user_q: "Delete user?",
     delete_user_desc: "will be deleted.",
+    create_user: "New User",
+    create_user_title: "Create New User",
+    create_user_desc: "Create a new user account.",
+    password: "Password",
+    toast_user_created: "User created successfully",
+    performed_by: "User",
+    excel_export: "Download Excel",
   },
 };
 
 const LanguageContext = createContext(null);
 
 export function LanguageProvider({ children }) {
-  const [lang, setLang] = useState(() => localStorage.getItem("lang") || "tr");
+  const [lang, setLang] = useState(() => localStorage.getItem("lang") || "en");
 
   useEffect(() => {
     localStorage.setItem("lang", lang);
