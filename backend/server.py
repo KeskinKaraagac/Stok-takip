@@ -416,7 +416,8 @@ async def login(payload: LoginIn, response: Response):
     refresh = create_token(user["id"], user["email"], user["role"], "refresh", 60 * 24 * 7)
     set_auth_cookies(response, access, refresh)
     user.pop("password_hash", None)
-  return {"user": user}
+    user.pop("_id", None)
+    return {"user": user, "access_token": access}
 
 
 @api.post("/auth/logout")

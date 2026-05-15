@@ -4,7 +4,7 @@ import uuid
 import pytest
 import requests
 
-BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://depo-yonetim-14.preview.emergentagent.com").rstrip("/")
+BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://code-deploy-86.preview.emergentagent.com").rstrip("/")
 API = f"{BASE}/api"
 
 ADMIN_EMAIL = "admin@stoktakip.com"
