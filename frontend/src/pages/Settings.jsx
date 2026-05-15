@@ -326,10 +326,19 @@ const [createForm, setCreateForm] = useState({
       </div>
 
       <div className="border border-slate-200 rounded-sm bg-white overflow-x-auto" data-testid="users-table">
-        <div className="p-5 border-b border-slate-200">
-          <h3 className="text-lg font-display font-medium">{t("user_management")}</h3>
-          <p className="text-sm text-slate-500">{t("user_management_desc")}</p>
-        </div>
+      <div className="flex items-center justify-between">
+  <div>
+    <h3 className="text-lg font-display font-medium">{t("user_management")}</h3>
+    <p className="text-sm text-slate-500">{t("user_management_desc")}</p>
+  </div>
+
+  <Button
+    onClick={() => setCreateOpen(true)}
+    className="bg-[#0047AB] hover:bg-[#003380] rounded-sm"
+  >
+    Create User
+  </Button>
+</div>
         <table className="dense w-full">
           <thead><tr>
             <th>{t("name")}</th>
