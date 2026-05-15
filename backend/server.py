@@ -452,7 +452,7 @@ async def update_me(payload: SelfUpdateIn, user: dict = Depends(get_current_user
             raise HTTPException(status_code=400, detail="Bu e-posta başka bir kullanıcıya ait")
         update["email"] = em
     if payload.language is not None:
-    update["language"] = payload.language
+        update["language"] = payload.language
     if payload.new_password:
         full = await db.users.find_one({"id": user["id"]})
         if not full or not verify_password(payload.current_password or "", full.get("password_hash", "")):
