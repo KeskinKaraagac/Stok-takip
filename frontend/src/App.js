@@ -26,7 +26,6 @@ function App() {
           <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/my-settings" element={<MySettings />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
 
@@ -58,6 +57,7 @@ function App() {
             />
             <Route path="/stock" element={<Stock />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/my-settings" element={<MySettings />} />
             <Route
               path="/settings"
               element={
