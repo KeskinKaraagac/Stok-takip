@@ -243,6 +243,7 @@ class RegisterIn(BaseModel):
     password: str = Field(min_length=6)
     name: str = Field(min_length=1)
     role: Optional[str] = ROLE_STAFF
+    language: Optional[Literal["en", "tr"]] = "en"
 
 
 class LoginIn(BaseModel):
@@ -385,6 +386,7 @@ async def register(payload: RegisterIn, response: Response):
         "name": payload.name,
         "role": role,
         "active": True,
+        "language": payload.language or "en",
         "permissions": default_permissions(role),
         "password_hash": hash_password(payload.password),
         "created_at": now_utc().isoformat(),
@@ -424,15 +426,16 @@ async def logout(response: Response):
 async def me(user: dict = Depends(get_current_user)):
     out = dict(user)
     out["permissions"] = user_permissions(user)
+    out["language"] = out.get("language", "en")
     return out
 
 
 class SelfUpdateIn(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
+    language: Optional[Literal["en", "tr"]] = None
     current_password: Optional[str] = None
     new_password: Optional[str] = Field(default=None, min_length=6)
-
 
 @api.put("/auth/me")
 async def update_me(payload: SelfUpdateIn, user: dict = Depends(get_current_user)):
@@ -445,6 +448,8 @@ async def update_me(payload: SelfUpdateIn, user: dict = Depends(get_current_user
         if clash:
             raise HTTPException(status_code=400, detail="Bu e-posta başka bir kullanıcıya ait")
         update["email"] = em
+    if payload.language is not None:
+    update["language"] = payload.language
     if payload.new_password:
         full = await db.users.find_one({"id": user["id"]})
         if not full or not verify_password(payload.current_password or "", full.get("password_hash", "")):
@@ -1679,6 +1684,7 @@ async def startup_event():
             "name": "Admin",
             "role": ROLE_ADMIN,
             "active": True,
+            "language": "en",
             "permissions": list(ALL_PERMISSIONS),
             "password_hash": hash_password(admin_pw),
             "created_at": now_utc().isoformat(),
