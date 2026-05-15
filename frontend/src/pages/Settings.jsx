@@ -50,6 +50,29 @@ const [createForm, setCreateForm] = useState({
   password: "",
   role: "personel",
 });
+  const createUser = async () => {
+  try {
+    await api.post("/auth/register", {
+      name: createForm.name,
+      email: createForm.email,
+      password: createForm.password,
+      role: createForm.role,
+      language: "en",
+    });
+
+    toast.success("User created successfully");
+    setCreateOpen(false);
+    setCreateForm({
+      name: "",
+      email: "",
+      password: "",
+      role: "personel",
+    });
+    load();
+  } catch (e) {
+    toast.error(formatApiError(e));
+  }
+};
 
   useEffect(() => {
     setCompanyForm({
