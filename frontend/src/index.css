@@ -84,6 +84,38 @@ table.dense tr:hover td {
     @apply bg-slate-50;
 }
 
+@layer components {
+    .glass-workspace .bg-white,
+    .glass-workspace .bg-card {
+        background-color: rgba(255, 255, 255, 0.78);
+        -webkit-backdrop-filter: blur(22px);
+        backdrop-filter: blur(22px);
+        box-shadow: 0 18px 60px rgba(15, 23, 42, 0.12);
+    }
+
+    .glass-workspace .bg-slate-50 {
+        background-color: rgba(248, 250, 252, 0.58);
+        -webkit-backdrop-filter: blur(16px);
+        backdrop-filter: blur(16px);
+    }
+
+    .glass-workspace .border-slate-200 {
+        border-color: rgba(255, 255, 255, 0.36);
+    }
+
+    .glass-workspace table.dense th {
+        background-color: rgba(255, 255, 255, 0.52);
+    }
+
+    .glass-workspace table.dense td {
+        border-bottom-color: rgba(255, 255, 255, 0.34);
+    }
+
+    .glass-workspace table.dense tr:hover td {
+        background-color: rgba(255, 255, 255, 0.48);
+    }
+}
+
 /* SaaS polish: subtle animations */
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(4px); }
