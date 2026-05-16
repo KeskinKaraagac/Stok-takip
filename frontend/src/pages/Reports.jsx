@@ -15,7 +15,7 @@ import { useLanguage } from "../context/LanguageContext";
 import PageHeader from "../components/PageHeader";
 import { toast } from "sonner";
 
-const COLORS = ["#0047AB", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16"];
+const COLORS = ["#145BFF", "#10b981", "#f59e0b", "#ef4444", "#7c3aed", "#06b6d4", "#ec4899", "#84cc16"];
 
 const renderPieLabel = (unit) => ({ cx, cy, midAngle, outerRadius, value, name, percent }) => {
   const RADIAN = Math.PI / 180;
@@ -110,7 +110,7 @@ export default function Reports() {
       <PageHeader title={t("reports")} subtitle={t("reports_subtitle")} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="rounded-sm report-print-hide">
+        <TabsList className="rounded-md border border-slate-200 bg-white report-print-hide">
           <TabsTrigger value="stock" data-testid="tab-stock-report">{t("current_stock_report")}</TabsTrigger>
           <TabsTrigger value="financial" data-testid="tab-financial">{t("financial_report")}</TabsTrigger>
           <TabsTrigger value="distribution" data-testid="tab-distribution">{t("distribution_report")}</TabsTrigger>
@@ -124,7 +124,7 @@ export default function Reports() {
             <>
               {/* Category kg summary chips */}
               {stockCategorySummary.length > 0 && (
-                <div className="mb-4 border border-slate-200 rounded-sm bg-white p-4" data-testid="stock-category-summary">
+                <div className="sphere-card mb-4 border border-slate-200 rounded-lg bg-white p-4" data-testid="stock-category-summary">
                   <div className="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-3">
                     {t("stock_by_category_header")}
                   </div>
@@ -152,7 +152,7 @@ export default function Reports() {
                 </Button>
                 <PdfButton onClick={printReport} t={t} />
               </div>
-              <div className="border border-slate-200 rounded-sm overflow-x-auto bg-white">
+              <div className="sphere-card overflow-x-auto border border-slate-200 rounded-lg bg-white">
                 <table className="dense w-full">
                   <thead><tr>
                     <th>{t("product")}</th>
@@ -194,7 +194,7 @@ export default function Reports() {
                 <SummaryCard label={t("total_stock_count")} value={formatNumber(stockRows.reduce((a, b) => a + Number(b.current_stock || 0), 0), 0)} />
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="border border-slate-200 rounded-sm p-5 bg-white">
+                <div className="sphere-card border border-slate-200 rounded-lg p-5 bg-white">
                   <h3 className="text-lg font-display font-medium mb-3">{t("category_financial_value")}</h3>
                   <ResponsiveContainer width="100%" height={360}>
                     <PieChart margin={{ top: 10, right: 80, bottom: 10, left: 80 }}>
@@ -210,11 +210,11 @@ export default function Reports() {
                       >
                         {cats.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                       </Pie>
-                      <Tooltip formatter={(v) => formatCurrency(v)} contentStyle={{ border: "1px solid #e2e8f0", borderRadius: 0 }} />
+                      <Tooltip formatter={(v) => formatCurrency(v)} contentStyle={{ border: "1px solid #dfe7f2", borderRadius: 8 }} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="border border-slate-200 rounded-sm overflow-x-auto bg-white">
+                <div className="sphere-card overflow-x-auto border border-slate-200 rounded-lg bg-white">
                   <table className="dense w-full">
                     <thead><tr><th>{t("category")}</th><th>{t("product_count")}</th><th>{t("stock_qty")}</th><th>{t("financial_value")}</th></tr></thead>
                     <tbody>
@@ -241,7 +241,7 @@ export default function Reports() {
             <PdfButton onClick={printReport} t={t} />
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="border border-slate-200 rounded-sm p-5 bg-white">
+            <div className="sphere-card border border-slate-200 rounded-lg p-5 bg-white">
               <h3 className="text-lg font-display font-medium mb-3">{t("category_stock_dist")}</h3>
               <ResponsiveContainer width="100%" height={360}>
                 <PieChart margin={{ top: 10, right: 80, bottom: 10, left: 80 }}>
@@ -257,11 +257,11 @@ export default function Reports() {
                   >
                     {cats.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip formatter={(v) => `${formatNumber(v, 2)} kg`} contentStyle={{ border: "1px solid #e2e8f0", borderRadius: 0 }} />
+                  <Tooltip formatter={(v) => `${formatNumber(v, 2)} kg`} contentStyle={{ border: "1px solid #dfe7f2", borderRadius: 8 }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="border border-slate-200 rounded-sm p-5 bg-white">
+            <div className="sphere-card border border-slate-200 rounded-lg p-5 bg-white">
               <h3 className="text-lg font-display font-medium mb-3">{t("product_stock_chart")}</h3>
               {stock && (
                 <ResponsiveContainer width="100%" height={320}>
@@ -269,8 +269,8 @@ export default function Reports() {
                     <CartesianGrid strokeDasharray="2 2" stroke="#e2e8f0" vertical={false} />
                     <XAxis dataKey="name" stroke="#64748b" fontSize={10} angle={-30} textAnchor="end" height={70} interval={0} />
                     <YAxis stroke="#64748b" fontSize={11} />
-                    <Tooltip contentStyle={{ border: "1px solid #e2e8f0", borderRadius: 0 }} formatter={(v) => formatNumber(v, 0)} />
-                    <Bar dataKey="current_stock" fill="#0047AB" radius={[2, 2, 0, 0]}>
+                    <Tooltip contentStyle={{ border: "1px solid #dfe7f2", borderRadius: 8 }} formatter={(v) => formatNumber(v, 0)} />
+                    <Bar dataKey="current_stock" fill="#145BFF" radius={[6, 6, 0, 0]}>
                       <LabelList dataKey="current_stock" position="top" formatter={(v) => formatNumber(v, 0)} fill="#0f172a" fontSize={11} fontWeight={600} />
                     </Bar>
                   </BarChart>
@@ -293,21 +293,21 @@ export default function Reports() {
                 <SummaryCard label={t("daily_avg")} value={`${formatNumber(prod.daily_avg_weight, 2)} kg`} />
                 <SummaryCard label={t("weekly_avg")} value={`${formatNumber(prod.weekly_avg_weight, 2)} kg`} />
               </div>
-              <div className="border border-slate-200 rounded-sm p-5 mb-4 bg-white">
+              <div className="sphere-card border border-slate-200 rounded-lg p-5 mb-4 bg-white">
                 <h3 className="text-lg font-display font-medium mb-3">{t("daily_production_kg")}</h3>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={prod.by_day} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="2 2" stroke="#e2e8f0" vertical={false} />
                     <XAxis dataKey="date" tickFormatter={(v) => v.slice(8, 10) + "." + v.slice(5, 7)} stroke="#64748b" fontSize={11} />
                     <YAxis stroke="#64748b" fontSize={11} />
-                    <Tooltip contentStyle={{ border: "1px solid #e2e8f0", borderRadius: 0 }} formatter={(v) => `${formatNumber(v, 2)} kg`} labelFormatter={(l) => formatDate(l)} />
-                    <Bar dataKey="weight" fill="#0047AB" radius={[2, 2, 0, 0]}>
+                    <Tooltip contentStyle={{ border: "1px solid #dfe7f2", borderRadius: 8 }} formatter={(v) => `${formatNumber(v, 2)} kg`} labelFormatter={(l) => formatDate(l)} />
+                    <Bar dataKey="weight" fill="#145BFF" radius={[6, 6, 0, 0]}>
                       <LabelList dataKey="weight" position="top" formatter={(v) => formatNumber(v, 1)} fill="#0f172a" fontSize={10} fontWeight={600} />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-              <div className="border border-slate-200 rounded-sm overflow-x-auto bg-white">
+              <div className="sphere-card overflow-x-auto border border-slate-200 rounded-lg bg-white">
                 <div className="p-4 border-b border-slate-200">
                   <h3 className="text-base font-display font-medium">{t("avg_production_per_product")}</h3>
                 </div>
@@ -329,7 +329,7 @@ export default function Reports() {
                         <td className="tabular">{formatNumber(p.weight, 2)}</td>
                         <td className="tabular">{formatNumber(p.count, 0)}</td>
                         <td className="tabular">{formatNumber(p.avg_quantity, 0)}</td>
-                        <td className="tabular font-medium text-[#0047AB]">{formatNumber(p.avg_weight, 2)}</td>
+                        <td className="tabular font-medium text-[#145BFF]">{formatNumber(p.avg_weight, 2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -354,29 +354,29 @@ export default function Reports() {
                 <SummaryCard label={t("daily_avg_kg")} value={`${formatNumber(sales.daily_avg_weight, 2)} kg`} />
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-                <div className="border border-slate-200 rounded-sm p-5 bg-white">
+                <div className="sphere-card border border-slate-200 rounded-lg p-5 bg-white">
                   <h3 className="text-lg font-display font-medium mb-3">{t("daily_exit_kg")}</h3>
                   <ResponsiveContainer width="100%" height={280}>
                     <LineChart data={sales.by_day} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="2 2" stroke="#e2e8f0" vertical={false} />
                       <XAxis dataKey="date" tickFormatter={(v) => v.slice(8, 10) + "." + v.slice(5, 7)} stroke="#64748b" fontSize={11} />
                       <YAxis stroke="#64748b" fontSize={11} />
-                      <Tooltip contentStyle={{ border: "1px solid #e2e8f0", borderRadius: 0 }} formatter={(v) => `${formatNumber(v, 2)} kg`} labelFormatter={(l) => formatDate(l)} />
-                      <Line type="monotone" dataKey="weight" stroke="#0047AB" strokeWidth={2} dot={{ r: 3, fill: "#0047AB" }} activeDot={{ r: 5 }}>
+                      <Tooltip contentStyle={{ border: "1px solid #dfe7f2", borderRadius: 8 }} formatter={(v) => `${formatNumber(v, 2)} kg`} labelFormatter={(l) => formatDate(l)} />
+                      <Line type="monotone" dataKey="weight" stroke="#145BFF" strokeWidth={3} dot={{ r: 3, fill: "#145BFF" }} activeDot={{ r: 5 }}>
                         <LabelList dataKey="weight" position="top" formatter={(v) => v > 0 ? formatNumber(v, 1) : ""} fill="#0f172a" fontSize={10} fontWeight={600} />
                       </Line>
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="border border-slate-200 rounded-sm p-5 bg-white">
+                <div className="sphere-card border border-slate-200 rounded-lg p-5 bg-white">
                   <h3 className="text-lg font-display font-medium mb-3">{t("top_products_by_weight")}</h3>
                   <ResponsiveContainer width="100%" height={280}>
                     <BarChart data={sales.by_product.slice(0, 10)} layout="vertical" margin={{ left: 20, right: 70, top: 10, bottom: 10 }}>
                       <CartesianGrid strokeDasharray="2 2" stroke="#e2e8f0" horizontal={false} />
                       <XAxis type="number" stroke="#64748b" fontSize={11} />
                       <YAxis dataKey="product_name" type="category" width={120} stroke="#64748b" fontSize={11} />
-                      <Tooltip contentStyle={{ border: "1px solid #e2e8f0", borderRadius: 0 }} formatter={(v) => `${formatNumber(v, 2)} kg`} />
-                      <Bar dataKey="weight" fill="#0047AB" radius={[0, 2, 2, 0]}>
+                      <Tooltip contentStyle={{ border: "1px solid #dfe7f2", borderRadius: 8 }} formatter={(v) => `${formatNumber(v, 2)} kg`} />
+                      <Bar dataKey="weight" fill="#145BFF" radius={[0, 6, 6, 0]}>
                         <LabelList dataKey="weight" position="right" formatter={(v) => `${formatNumber(v, 1)} kg`} fill="#0f172a" fontSize={11} fontWeight={600} />
                       </Bar>
                     </BarChart>
@@ -384,7 +384,7 @@ export default function Reports() {
                 </div>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="border border-slate-200 rounded-sm overflow-x-auto bg-white">
+                <div className="sphere-card overflow-x-auto border border-slate-200 rounded-lg bg-white">
                   <div className="p-3 border-b border-slate-200 text-sm font-medium">{t("top_customers")}</div>
                   <table className="dense w-full">
                     <thead><tr><th>{t("customer")}</th><th>{t("exit_qty")}</th><th>{t("exit_kg")}</th></tr></thead>
@@ -400,7 +400,7 @@ export default function Reports() {
                     </tbody>
                   </table>
                 </div>
-                <div className="border border-slate-200 rounded-sm overflow-x-auto bg-white">
+                <div className="sphere-card overflow-x-auto border border-slate-200 rounded-lg bg-white">
                   <div className="p-3 border-b border-slate-200 text-sm font-medium">{t("product_based_exit")}</div>
                   <table className="dense w-full">
                     <thead><tr><th>{t("product")}</th><th>{t("quantity")}</th><th>kg</th></tr></thead>
@@ -427,9 +427,9 @@ export default function Reports() {
 
 function SummaryCard({ label, value, accent }) {
   return (
-    <div className="report-card border border-slate-200 bg-white p-5 rounded-sm transition-all hover:shadow-md hover:border-[#0047AB]/30">
+    <div className="sphere-kpi report-card border border-slate-200 bg-white p-5 rounded-lg transition-all hover:border-[#145BFF]/30 hover:shadow-lg">
       <div className="text-xs uppercase tracking-[0.1em] font-bold text-slate-500 mb-2">{label}</div>
-      <div className={`kpi-value text-3xl tabular ${accent ? "text-[#0047AB]" : "text-slate-900"}`}>{value}</div>
+      <div className={`kpi-value text-3xl tabular ${accent ? "text-[#145BFF]" : "text-slate-900"}`}>{value}</div>
     </div>
   );
 }

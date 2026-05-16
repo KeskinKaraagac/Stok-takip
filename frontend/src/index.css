@@ -9,7 +9,7 @@ body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #ffffff;
+    background-color: #f5f7fb;
     color: #0f172a;
 }
 
@@ -24,13 +24,13 @@ code {
 
 @layer base {
     :root {
-        --background: 0 0% 100%;
+        --background: 220 33% 97%;
         --foreground: 222 47% 11%;
         --card: 0 0% 100%;
         --card-foreground: 222 47% 11%;
         --popover: 0 0% 100%;
         --popover-foreground: 222 47% 11%;
-        --primary: 217 100% 33%;
+        --primary: 217 100% 42%;
         --primary-foreground: 0 0% 100%;
         --secondary: 210 40% 96.1%;
         --secondary-foreground: 222 47% 11%;
@@ -40,10 +40,10 @@ code {
         --accent-foreground: 222 47% 11%;
         --destructive: 0 84% 60%;
         --destructive-foreground: 0 0% 100%;
-        --border: 214 32% 91%;
-        --input: 214 32% 91%;
-        --ring: 217 100% 33%;
-        --chart-1: 217 100% 33%;
+        --border: 214 38% 90%;
+        --input: 214 38% 90%;
+        --ring: 217 100% 42%;
+        --chart-1: 217 100% 42%;
         --chart-2: 173 58% 39%;
         --chart-3: 38 92% 50%;
         --chart-4: 0 84% 60%;
@@ -61,9 +61,9 @@ code {
     }
 }
 
-/* Sharp edges utility classes */
+/* Core utility classes */
 .btn-primary {
-    @apply bg-[#0047AB] text-white hover:bg-[#003380] transition-colors;
+    @apply bg-[#145BFF] text-white hover:bg-[#0B4BE0] transition-colors;
 }
 .kpi-value {
     font-family: 'Work Sans', sans-serif;
@@ -85,34 +85,64 @@ table.dense tr:hover td {
 }
 
 @layer components {
-    .glass-workspace .bg-white,
-    .glass-workspace .bg-card {
-        background-color: rgba(255, 255, 255, 0.78);
-        -webkit-backdrop-filter: blur(22px);
-        backdrop-filter: blur(22px);
-        box-shadow: 0 18px 60px rgba(15, 23, 42, 0.12);
+    .sphere-workspace {
+        background:
+            linear-gradient(180deg, rgba(20, 91, 255, 0.035), rgba(16, 185, 129, 0.025) 38%, transparent 76%),
+            #f5f7fb;
     }
 
-    .glass-workspace .bg-slate-50 {
-        background-color: rgba(248, 250, 252, 0.58);
-        -webkit-backdrop-filter: blur(16px);
-        backdrop-filter: blur(16px);
+    .sphere-card,
+    .sphere-workspace .bg-white.border,
+    .sphere-workspace .border.bg-white,
+    .sphere-workspace .border.border-slate-200.bg-white {
+        border-color: #dfe7f2;
+        border-radius: 0.5rem;
+        box-shadow: 0 16px 38px rgba(20, 42, 82, 0.07);
     }
 
-    .glass-workspace .border-slate-200 {
-        border-color: rgba(255, 255, 255, 0.36);
+    .sphere-card-soft {
+        border: 1px solid #dfe7f2;
+        border-radius: 0.5rem;
+        background: #ffffff;
+        box-shadow: 0 16px 38px rgba(20, 42, 82, 0.07);
     }
 
-    .glass-workspace table.dense th {
-        background-color: rgba(255, 255, 255, 0.52);
+    .sphere-kpi {
+        position: relative;
+        overflow: hidden;
     }
 
-    .glass-workspace table.dense td {
-        border-bottom-color: rgba(255, 255, 255, 0.34);
+    .sphere-kpi::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 4px;
+        background: linear-gradient(180deg, #145BFF, #10b981);
     }
 
-    .glass-workspace table.dense tr:hover td {
-        background-color: rgba(255, 255, 255, 0.48);
+    .sphere-workspace table.dense th {
+        background: #f2f6fb;
+        color: #52637a;
+    }
+
+    .sphere-workspace table.dense td {
+        border-bottom-color: #e9eef6;
+    }
+
+    .sphere-workspace table.dense tr:hover td {
+        background: #f7faff;
+    }
+
+    .sphere-workspace input,
+    .sphere-workspace textarea,
+    .sphere-workspace button[role="combobox"] {
+        border-color: #dce5f2;
+    }
+
+    .sphere-workspace input:focus-visible,
+    .sphere-workspace textarea:focus-visible,
+    .sphere-workspace button[role="combobox"]:focus-visible {
+        box-shadow: 0 0 0 3px rgba(20, 91, 255, 0.12);
     }
 }
 
@@ -137,9 +167,9 @@ table.dense tbody tr {
     transition: background-color 0.15s ease;
 }
 
-/* Sharp focus ring matching Cobalt Blue */
+/* Focus ring matching the primary blue */
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
-    outline-color: #0047AB;
+    outline-color: #145BFF;
 }
 
 @layer base {
