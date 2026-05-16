@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, X, FileDown, FileSpreadsheet, ArrowDownToLine } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -34,7 +34,7 @@ export default function Sales() {
   });
   const [addRow, setAddRow] = useState({ product_id: "", quantity: 1, unit_price: 0 });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const params = {};
       if (start) params.start = start;
@@ -46,8 +46,8 @@ export default function Sales() {
       ]);
       setSales(s.data); setCustomers(c.data); setProducts(p.data);
     } catch (e) { toast.error(formatApiError(e)); }
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [start, end]);
+  }, [start, end]);
+  useEffect(() => { load(); }, [load]);
 
   const productMap = useMemo(() => Object.fromEntries(products.map((p) => [p.id, p])), [products]);
 

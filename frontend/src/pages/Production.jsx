@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { Plus, Trash2, FileSpreadsheet } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -32,7 +32,7 @@ export default function Production() {
 
   const productMap = useMemo(() => Object.fromEntries(products.map((p) => [p.id, p])), [products]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const params = {};
       if (start) params.start = start;
@@ -44,9 +44,9 @@ export default function Production() {
       setProductions(pr.data);
       setProducts(prods.data);
     } catch (e) { toast.error(formatApiError(e)); }
-  };
+  }, [start, end]);
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [start, end]);
+  useEffect(() => { load(); }, [load]);
 
   const onProductChange = (id) => {
     const p = products.find((x) => x.id === id);

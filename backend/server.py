@@ -246,6 +246,14 @@ class RegisterIn(BaseModel):
     language: Optional[Literal["en", "tr"]] = "en"
 
 
+class UserCreateIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6)
+    name: str = Field(min_length=1)
+    role: Literal["admin", "personel", "rapor"] = ROLE_STAFF
+    language: Literal["en", "tr"] = "en"
+
+
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
@@ -483,21 +491,24 @@ async def forgot_password(payload: ForgotPasswordIn):
     user = await db.users.find_one({"email": email})
     # Always return success to avoid email enumeration
     if user:
+        created_at = now_utc()
         token = secrets.token_urlsafe(32)
+        await db.password_reset_tokens.update_many(
+            {"user_id": user["id"], "used": False},
+            {"$set": {"used": True, "superseded_at": created_at}},
+        )
         await db.password_reset_tokens.insert_one({
             "token": token,
             "user_id": user["id"],
             "email": email,
-            "expires_at": now_utc() + timedelta(hours=1),
+            "expires_at": created_at + timedelta(days=7),
             "used": False,
-            "created_at": now_utc(),
+            "admin_request": True,
+            "request_status": "pending",
+            "created_at": created_at,
         })
-        frontend = os.environ.get("FRONTEND_URL", "")
-        reset_link = f"{frontend}/reset-password?token={token}" if frontend else f"/reset-password?token={token}"
-        # In production this would be emailed. For now we log + return token in dev mode.
-        logger.info(f"[PASSWORD RESET] {email}: {reset_link}")
-        return {"ok": True, "message": "Şifre sıfırlama bağlantısı gönderildi", "dev_token": token, "dev_link": reset_link}
-    return {"ok": True, "message": "Şifre sıfırlama bağlantısı gönderildi"}
+        logger.info(f"[PASSWORD RESET REQUEST] {email} requested an admin password reset")
+    return {"ok": True, "message": "Şifre talebiniz yöneticiye iletildi"}
 
 
 @api.post("/auth/reset-password")
@@ -1586,17 +1597,55 @@ async def report_sales(start: Optional[str] = None, end: Optional[str] = None, u
 
 # ===== USERS (admin) =====
 @api.get("/users")
-async def list_users(user: dict = Depends(require_permission("users.manage"))):
+async def list_users(user: dict = Depends(require_roles(ROLE_ADMIN))):
     docs = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
+    user_ids = [u["id"] for u in docs]
+    pending = await db.password_reset_tokens.find(
+        {"user_id": {"$in": user_ids}, "used": False, "admin_request": True},
+        {"_id": 0, "user_id": 1, "created_at": 1},
+    ).sort("created_at", -1).to_list(1000)
+    reset_requests = {}
+    for rec in pending:
+        reset_requests.setdefault(rec["user_id"], rec.get("created_at"))
     for u in docs:
         if u.get("permissions") is None:
             u["permissions"] = default_permissions(u.get("role", ""))
+        if u["id"] in reset_requests:
+            u["password_reset_requested"] = True
+            u["password_reset_requested_at"] = reset_requests[u["id"]]
+        else:
+            u["password_reset_requested"] = False
     return docs
 
 
+@api.post("/users")
+async def create_user(payload: UserCreateIn, user: dict = Depends(require_roles(ROLE_ADMIN))):
+    email = payload.email.lower().strip()
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Bu e-posta zaten kayıtlı")
+    role = payload.role if payload.role in ALL_ROLES else ROLE_STAFF
+    new_user = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "name": payload.name.strip(),
+        "role": role,
+        "active": True,
+        "language": payload.language or "en",
+        "permissions": default_permissions(role),
+        "password_hash": hash_password(payload.password),
+        "created_at": now_utc().isoformat(),
+    }
+    await db.users.insert_one(new_user)
+    new_user.pop("password_hash", None)
+    new_user.pop("_id", None)
+    return new_user
+
+
 @api.put("/users/{uid}")
-async def update_user(uid: str, payload: dict, user: dict = Depends(require_permission("users.manage"))):
+async def update_user(uid: str, payload: dict, user: dict = Depends(require_roles(ROLE_ADMIN))):
     allowed = {k: v for k, v in payload.items() if k in ["name", "email", "role", "active", "permissions"]}
+    password_changed = False
     if "email" in allowed:
         em = (allowed["email"] or "").lower().strip()
         if not em:
@@ -1617,17 +1666,35 @@ async def update_user(uid: str, payload: dict, user: dict = Depends(require_perm
         if len(payload["password"]) < 6:
             raise HTTPException(status_code=400, detail="Şifre en az 6 karakter olmalı")
         allowed["password_hash"] = hash_password(payload["password"])
+        password_changed = True
     res = await db.users.update_one({"id": uid}, {"$set": allowed})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+    if password_changed:
+        await db.password_reset_tokens.update_many(
+            {"user_id": uid, "used": False},
+            {"$set": {
+                "used": True,
+                "used_at": now_utc(),
+                "request_status": "resolved",
+                "resolved_by": user["id"],
+            }},
+        )
     u = await db.users.find_one({"id": uid}, {"_id": 0, "password_hash": 0})
     if u.get("permissions") is None:
         u["permissions"] = default_permissions(u.get("role", ""))
+    pending_request = None if password_changed else await db.password_reset_tokens.find_one(
+        {"user_id": uid, "used": False, "admin_request": True},
+        {"_id": 0, "created_at": 1},
+    )
+    u["password_reset_requested"] = bool(pending_request)
+    if pending_request:
+        u["password_reset_requested_at"] = pending_request.get("created_at")
     return u
 
 
 @api.delete("/users/{uid}")
-async def delete_user(uid: str, user: dict = Depends(require_permission("users.manage"))):
+async def delete_user(uid: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
     if uid == user["id"]:
         raise HTTPException(status_code=400, detail="Kendi hesabınızı silemezsiniz")
     res = await db.users.delete_one({"id": uid})
@@ -1645,10 +1712,16 @@ async def root():
 # ----- Register router + CORS -----
 app.include_router(api)
 
+cors_origins = [origin.strip() for origin in os.environ.get("CORS_ORIGINS", "*").split(",") if origin.strip()]
+if not cors_origins:
+    cors_origins = ["*"]
+cors_origin_regex = os.environ.get("CORS_ORIGIN_REGEX", r"https://.*\.vercel\.app").strip() or None
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -1671,6 +1744,7 @@ async def startup_event():
         await db.sales.create_index("id", unique=True)
         await db.stock_movements.create_index("id", unique=True)
         await db.company.create_index("id", unique=True)
+        await db.password_reset_tokens.create_index("user_id")
     except Exception as e:
         logger.warning(f"Index creation: {e}")
 

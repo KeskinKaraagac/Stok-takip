@@ -11,6 +11,7 @@ const TRANSLATIONS = {
     stock: "Stok Durumu",
     reports: "Raporlar",
     settings: "Ayarlar",
+    mySettings: "Ayarlarım",
     logout: "Çıkış Yap",
 
     // ===== Common =====
@@ -25,6 +26,8 @@ const TRANSLATIONS = {
     export: "Dışa Aktar",
     excel: "Excel",
     csv: "CSV",
+    pdf: "PDF",
+    print_pdf: "PDF Çıktısı",
     confirm: "Onayla",
     yes: "Evet",
     no: "Hayır",
@@ -54,6 +57,29 @@ const TRANSLATIONS = {
     all: "Tümü",
     no_data: "Veri yok",
     code: "Kod",
+    auth_tagline: "Üretim ve stok yönetimi",
+    brand_subtitle: "Üretim & Satış",
+    menu: "Menü",
+    login_visual_title: "Stok, üretim ve depo çıkışları tek çalışma alanında.",
+    secured_workspace: "Güvenli çalışma alanı",
+    login_activity: "Operasyon akışı",
+    login_metric_stock: "Stok",
+    login_metric_production: "Üretim",
+    login_metric_exit: "Çıkış",
+    login_secure_access: "Güvenli erişim",
+    login_title: "Giriş yap",
+    login_subtitle: "Devam etmek için hesabınızla oturum açın.",
+    login_success: "Giriş başarılı",
+    email_placeholder: "ornek@firma.com",
+    sign_in: "Giriş Yap",
+    signing_in: "Giriş yapılıyor...",
+    forgot_password: "Şifremi unuttum",
+    forgot_kicker: "Şifre talebi",
+    forgot_subtitle: "E-postanızı girin, yöneticinize yeni şifre talebini iletelim.",
+    forgot_request_success: "Şifre talebiniz yöneticinize iletildi.",
+    send_password_request: "Şifre Talebi Gönder",
+    sending_request: "Gönderiliyor...",
+    back_to_login: "Giriş sayfasına dön",
 
     // ===== Page subtitles =====
     dashboard_subtitle: "Genel iş durumu özeti",
@@ -265,7 +291,17 @@ const TRANSLATIONS = {
     toast_perms_updated: "İzinler güncellendi",
     toast_user_deleted: "Kullanıcı silindi",
     toast_user_updated: "Kullanıcı güncellendi",
+    toast_user_created: "Kullanıcı eklendi",
     toast_profile_updated: "Profil güncellendi",
+    add_user: "Kullanıcı Ekle",
+    create_user: "Kullanıcı Oluştur",
+    password: "Şifre",
+    user_required: "Ad, e-posta ve şifre zorunludur",
+    password_reset_request: "Şifre talebi",
+    password_reset_requests: "bekleyen şifre talebi",
+    password_reset_requested_at: "Talep zamanı",
+    password_request_notice: "Bu kullanıcı yeni şifre talep ediyor. Yeni şifre belirleyip kaydettiğinizde talep kapanır.",
+    set_new_password: "Şifreyi Ayarla",
     user_management_desc: "Her kullanıcının modül bazlı yetkilerini ayrı ayrı düzenleyebilirsiniz.",
     registered: "Kayıt",
     role_admin: "Yönetici",
@@ -287,6 +323,7 @@ const TRANSLATIONS = {
     stock: "Stock Status",
     reports: "Reports",
     settings: "Settings",
+    mySettings: "My Settings",
     logout: "Logout",
 
     save: "Save",
@@ -300,6 +337,8 @@ const TRANSLATIONS = {
     export: "Export",
     excel: "Excel",
     csv: "CSV",
+    pdf: "PDF",
+    print_pdf: "Print PDF",
     confirm: "Confirm",
     yes: "Yes",
     no: "No",
@@ -329,6 +368,29 @@ const TRANSLATIONS = {
     all: "All",
     no_data: "No data",
     code: "Code",
+    auth_tagline: "Production and stock management",
+    brand_subtitle: "Production & Sales",
+    menu: "Menu",
+    login_visual_title: "Stock, production, and warehouse exits in one workspace.",
+    secured_workspace: "Secured workspace",
+    login_activity: "Operational flow",
+    login_metric_stock: "Stock",
+    login_metric_production: "Production",
+    login_metric_exit: "Exits",
+    login_secure_access: "Secure access",
+    login_title: "Sign in",
+    login_subtitle: "Use your account to continue to the workspace.",
+    login_success: "Signed in successfully",
+    email_placeholder: "name@company.com",
+    sign_in: "Sign In",
+    signing_in: "Signing in...",
+    forgot_password: "Forgot password",
+    forgot_kicker: "Password request",
+    forgot_subtitle: "Enter your email and we will notify an administrator to set a new password.",
+    forgot_request_success: "Your password request was sent to an administrator.",
+    send_password_request: "Send Password Request",
+    sending_request: "Sending...",
+    back_to_login: "Back to sign in",
 
     dashboard_subtitle: "Overall business overview",
     products_subtitle: "Product definitions & stock management",
@@ -531,7 +593,17 @@ const TRANSLATIONS = {
     toast_perms_updated: "Permissions updated",
     toast_user_deleted: "User deleted",
     toast_user_updated: "User updated",
+    toast_user_created: "User created",
     toast_profile_updated: "Profile updated",
+    add_user: "Add User",
+    create_user: "Create User",
+    password: "Password",
+    user_required: "Name, email and password are required",
+    password_reset_request: "Password request",
+    password_reset_requests: "pending password request(s)",
+    password_reset_requested_at: "Requested at",
+    password_request_notice: "This user is asking for a new password. Set and save a new password to close the request.",
+    set_new_password: "Set Password",
     user_management_desc: "Edit each user's module-level permissions individually.",
     registered: "Registered",
     role_admin: "Administrator",
@@ -549,15 +621,16 @@ const TRANSLATIONS = {
 const LanguageContext = createContext(null);
 
 export function LanguageProvider({ children }) {
-  const [lang, setLang] = useState(() => localStorage.getItem("lang") || "tr");
+  const [lang, setLang] = useState(() => localStorage.getItem("lang") || localStorage.getItem("language") || "en");
 
   useEffect(() => {
     localStorage.setItem("lang", lang);
+    localStorage.setItem("language", lang);
     document.documentElement.lang = lang;
   }, [lang]);
 
   const t = (key) => {
-    const dict = TRANSLATIONS[lang] || TRANSLATIONS.tr;
+    const dict = TRANSLATIONS[lang] || TRANSLATIONS.en;
     return dict[key] ?? TRANSLATIONS.tr[key] ?? key;
   };
 

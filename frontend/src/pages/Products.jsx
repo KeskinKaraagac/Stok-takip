@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { Plus, Search, Download, FileSpreadsheet, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -39,13 +39,13 @@ export default function Products() {
   const [form, setForm] = useState(EMPTY);
   const [confirmDel, setConfirmDel] = useState(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const { data } = await api.get("/products");
       setItems(data);
     } catch (e) { toast.error(formatApiError(e)); }
-  };
-  useEffect(() => { load(); }, []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const categories = useMemo(() => Array.from(new Set(items.map((p) => p.category).filter(Boolean))), [items]);
 

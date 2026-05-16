@@ -10,7 +10,7 @@ import PageHeader from "../components/PageHeader";
 import { useLanguage } from "../context/LanguageContext";
 import { toast } from "sonner";
 
-const PIE_COLORS = ["#0047AB", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16"];
+const PIE_COLORS = ["#145BFF", "#10b981", "#f59e0b", "#ef4444", "#7c3aed", "#06b6d4", "#ec4899", "#84cc16"];
 
 const renderPieLabel = (unit, decimals = 1) => ({ cx, cy, midAngle, outerRadius, value, name, percent }) => {
   const RADIAN = Math.PI / 180;
@@ -31,12 +31,12 @@ const renderPieLabel = (unit, decimals = 1) => ({ cx, cy, midAngle, outerRadius,
 function KPI({ icon: Icon, label, value, sub, accent = false, testId }) {
   return (
     <div
-      className="border border-slate-200 bg-white p-5 rounded-sm transition-all duration-200 hover:shadow-md hover:border-[#0047AB]/30 hover:-translate-y-[1px]"
+      className="sphere-kpi border border-slate-200 bg-white p-5 rounded-lg transition-all duration-200 hover:-translate-y-[1px] hover:border-[#145BFF]/30 hover:shadow-lg"
       data-testid={testId}
     >
       <div className="flex items-center justify-between mb-3">
         <div className="text-xs uppercase tracking-[0.1em] font-bold text-slate-500">{label}</div>
-        <div className={`w-8 h-8 flex items-center justify-center transition-transform group-hover:scale-110 ${accent ? "bg-[#0047AB] text-white" : "bg-slate-100 text-slate-600"}`}>
+        <div className={`w-8 h-8 flex items-center justify-center rounded-md transition-transform group-hover:scale-110 ${accent ? "bg-[#145BFF] text-white" : "bg-blue-50 text-[#145BFF]"}`}>
           <Icon className="w-4 h-4" />
         </div>
       </div>
@@ -100,7 +100,7 @@ export default function Dashboard() {
 
       {/* Exit trend + Category Stock Pie */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-        <div className="lg:col-span-2 border border-slate-200 p-5 rounded-sm bg-white" data-testid="chart-exit-trend">
+        <div className="sphere-card lg:col-span-2 border border-slate-200 p-5 rounded-lg bg-white" data-testid="chart-exit-trend">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-display text-lg font-medium text-slate-800">{t("exit_trend")}</h3>
             <span className="text-xs uppercase tracking-wider text-slate-500">kg</span>
@@ -110,13 +110,13 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="2 2" stroke="#e2e8f0" vertical={false} />
               <XAxis dataKey="date" tickFormatter={(v) => v.slice(8, 10) + "." + v.slice(5, 7)} stroke="#64748b" fontSize={11} />
               <YAxis stroke="#64748b" fontSize={11} />
-              <Tooltip contentStyle={{ border: "1px solid #e2e8f0", borderRadius: 0, fontSize: 12 }} formatter={(v) => [`${formatNumber(v, 2)} kg`, t("weight_label")]} labelFormatter={(l) => formatDate(l)} />
-              <Line type="monotone" dataKey="weight" stroke="#0047AB" strokeWidth={2} dot={{ r: 3, fill: "#0047AB" }} activeDot={{ r: 5 }} />
+              <Tooltip contentStyle={{ border: "1px solid #dfe7f2", borderRadius: 8, fontSize: 12 }} formatter={(v) => [`${formatNumber(v, 2)} kg`, t("weight_label")]} labelFormatter={(l) => formatDate(l)} />
+              <Line type="monotone" dataKey="weight" stroke="#145BFF" strokeWidth={3} dot={{ r: 3, fill: "#145BFF" }} activeDot={{ r: 5 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="border border-slate-200 p-5 rounded-sm bg-white" data-testid="category-weight-pie">
+        <div className="sphere-card border border-slate-200 p-5 rounded-lg bg-white" data-testid="category-weight-pie">
           <h3 className="font-display text-lg font-medium text-slate-800 mb-4">{t("category_weight_title")}</h3>
           {categoryWeight.length === 0 ? (
             <div className="text-sm text-slate-400 py-12 text-center">{t("no_records")}</div>
@@ -135,7 +135,7 @@ export default function Dashboard() {
                 >
                   {categoryWeight.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                 </Pie>
-                <Tooltip formatter={(v) => `${formatNumber(v, 2)} kg`} contentStyle={{ border: "1px solid #e2e8f0", borderRadius: 0 }} />
+                <Tooltip formatter={(v) => `${formatNumber(v, 2)} kg`} contentStyle={{ border: "1px solid #dfe7f2", borderRadius: 8 }} />
               </PieChart>
             </ResponsiveContainer>
           )}
@@ -143,7 +143,7 @@ export default function Dashboard() {
       </div>
 
       {/* Category Potential Sale Value Bar */}
-      <div className="border border-slate-200 p-5 rounded-sm bg-white mb-6" data-testid="category-sale-bar">
+      <div className="sphere-card border border-slate-200 p-5 rounded-lg bg-white mb-6" data-testid="category-sale-bar">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display text-lg font-medium text-slate-800">{t("category_sale_value_title")}</h3>
           <span className="text-xs uppercase tracking-wider text-slate-500">£</span>
@@ -156,8 +156,8 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="2 2" stroke="#e2e8f0" horizontal={false} />
               <XAxis type="number" stroke="#64748b" fontSize={11} tickFormatter={(v) => `£${formatNumber(v, 0)}`} />
               <YAxis dataKey="category" type="category" width={140} stroke="#64748b" fontSize={12} />
-              <Tooltip contentStyle={{ border: "1px solid #e2e8f0", borderRadius: 0 }} formatter={(v) => formatCurrency(v)} />
-              <Bar dataKey="value" fill="#0047AB" radius={[0, 2, 2, 0]}>
+              <Tooltip contentStyle={{ border: "1px solid #dfe7f2", borderRadius: 8 }} formatter={(v) => formatCurrency(v)} />
+              <Bar dataKey="value" fill="#145BFF" radius={[0, 6, 6, 0]}>
                 <LabelList dataKey="value" position="right" formatter={(v) => formatCurrency(v)} fill="#0f172a" fontSize={12} fontWeight={600} />
               </Bar>
             </BarChart>
@@ -167,7 +167,7 @@ export default function Dashboard() {
 
       {/* Top products + Low stock */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-        <div className="border border-slate-200 p-5 rounded-sm bg-white" data-testid="top-products">
+        <div className="sphere-card border border-slate-200 p-5 rounded-lg bg-white" data-testid="top-products">
           <h3 className="font-display text-lg font-medium text-slate-800 mb-4">{t("top_products")}</h3>
           {data.top_products.length === 0 ? <div className="text-sm text-slate-400">{t("no_exits")}</div> : (
             <ul className="space-y-3">
@@ -187,7 +187,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="border border-slate-200 p-5 rounded-sm bg-white" data-testid="low-stock-alert">
+        <div className="sphere-card border border-slate-200 p-5 rounded-lg bg-white" data-testid="low-stock-alert">
           <div className="flex items-center gap-2 mb-4">
             <AlertTriangle className="w-4 h-4 text-amber-500" />
             <h3 className="font-display text-lg font-medium text-slate-800">{t("low_stock_title")}</h3>
@@ -213,9 +213,9 @@ export default function Dashboard() {
 
       {/* Recent activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="border border-slate-200 p-5 rounded-sm bg-white" data-testid="recent-productions">
+        <div className="sphere-card border border-slate-200 p-5 rounded-lg bg-white" data-testid="recent-productions">
           <div className="flex items-center gap-2 mb-4">
-            <Factory className="w-4 h-4 text-[#0047AB]" />
+            <Factory className="w-4 h-4 text-[#145BFF]" />
             <h3 className="font-display text-lg font-medium text-slate-800">{t("recent_productions")}</h3>
           </div>
           {data.recent_productions.length === 0 ? <div className="text-sm text-slate-400">{t("no_production")}</div> : (
@@ -233,9 +233,9 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="border border-slate-200 p-5 rounded-sm bg-white" data-testid="recent-sales">
+        <div className="sphere-card border border-slate-200 p-5 rounded-lg bg-white" data-testid="recent-sales">
           <div className="flex items-center gap-2 mb-4">
-            <ShoppingCart className="w-4 h-4 text-[#0047AB]" />
+            <ShoppingCart className="w-4 h-4 text-[#145BFF]" />
             <h3 className="font-display text-lg font-medium text-slate-800">{t("recent_exits")}</h3>
           </div>
           {data.recent_sales.length === 0 ? <div className="text-sm text-slate-400">{t("no_exits")}</div> : (

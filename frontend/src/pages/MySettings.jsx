@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import api from "../lib/api.js";
+import { useLanguage } from "../context/LanguageContext";
 
 export default function MySettings() {
+  const { t, setLang } = useLanguage();
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -20,8 +22,9 @@ export default function MySettings() {
         email: res.data.email || "",
         language: res.data.language || "en",
       }));
+      setLang(res.data.language || "en");
     });
-  }, []);
+  }, [setLang]);
 
   const save = async (e) => {
     e.preventDefault();
@@ -39,21 +42,21 @@ export default function MySettings() {
 
     try {
       await api.put("/auth/me", payload);
-      localStorage.setItem("language", form.language);
-      setMessage("Settings updated successfully.");
+      setLang(form.language);
+      setMessage(t("toast_profile_updated"));
     } catch (err) {
-      setMessage(err.response?.data?.detail || "Update failed.");
+      setMessage(err.response?.data?.detail || "Update failed");
     }
   };
 
   return (
     <div className="max-w-xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">My Settings</h1>
+      <h1 className="text-2xl font-bold mb-6">{t("mySettings")}</h1>
 
       <form onSubmit={save} className="space-y-4">
 
         <div>
-          <label>Name</label>
+          <label>{t("name")}</label>
           <input
             className="w-full border rounded-lg p-2"
             value={form.name}
@@ -64,7 +67,7 @@ export default function MySettings() {
         </div>
 
         <div>
-          <label>Email</label>
+          <label>{t("email")}</label>
           <input
             className="w-full border rounded-lg p-2"
             value={form.email}
@@ -75,7 +78,7 @@ export default function MySettings() {
         </div>
 
         <div>
-          <label>Language</label>
+          <label>{t("language")}</label>
           <select
             className="w-full border rounded-lg p-2"
             value={form.language}
@@ -91,7 +94,7 @@ export default function MySettings() {
         <hr />
 
         <div>
-          <label>Current Password</label>
+          <label>{t("current_password")}</label>
           <input
             type="password"
             className="w-full border rounded-lg p-2"
@@ -106,7 +109,7 @@ export default function MySettings() {
         </div>
 
         <div>
-          <label>New Password</label>
+          <label>{t("new_password")}</label>
           <input
             type="password"
             className="w-full border rounded-lg p-2"
@@ -121,7 +124,7 @@ export default function MySettings() {
         </div>
 
         <button className="bg-blue-600 text-white px-4 py-2 rounded-lg">
-          Save Changes
+          {t("save")}
         </button>
 
       </form>

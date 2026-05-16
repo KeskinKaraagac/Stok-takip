@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Wrench, AlertTriangle, FileSpreadsheet } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -33,7 +33,7 @@ export default function Stock() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ product_id: "", movement_type: "manuel", quantity: 0, description: "" });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const [p, m] = await Promise.all([
         api.get("/products"),
@@ -41,8 +41,8 @@ export default function Stock() {
       ]);
       setProducts(p.data); setMovements(m.data);
     } catch (e) { toast.error(formatApiError(e)); }
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [filterProduct]);
+  }, [filterProduct]);
+  useEffect(() => { load(); }, [load]);
 
   const pmap = useMemo(() => Object.fromEntries(products.map((p) => [p.id, p])), [products]);
 
