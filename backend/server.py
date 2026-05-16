@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import os
 import io
+import asyncio
 import uuid
 import secrets
 import logging
@@ -238,42 +239,131 @@ def env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def send_password_reset_email(to_email: str, reset_link: str):
+def env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def email_from_header() -> str:
+    fallback = os.environ.get("SMTP_USER", "").strip()
+    from_email = (
+        os.environ.get("EMAIL_FROM")
+        or os.environ.get("SMTP_FROM")
+        or fallback
+    ).strip()
+    if not from_email:
+        return ""
+    from_name = os.environ.get("EMAIL_FROM_NAME", os.environ.get("SMTP_FROM_NAME", "Stok Takip")).strip()
+    return f"{from_name} <{from_email}>" if from_name else from_email
+
+
+def password_reset_email_body(reset_link: str) -> str:
+    return (
+        "Merhaba,\n\n"
+        "Şifrenizi sıfırlamak için aşağıdaki bağlantıyı kullanın. "
+        "Bu bağlantı 1 saat geçerlidir.\n\n"
+        f"{reset_link}\n\n"
+        "Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.\n\n"
+        "Hello,\n\n"
+        "Use the link above to reset your password. This link expires in 1 hour.\n"
+    )
+
+
+def has_email_configuration() -> bool:
+    if os.environ.get("RESEND_API_KEY") or os.environ.get("SENDGRID_API_KEY"):
+        return bool(os.environ.get("EMAIL_FROM") or os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER"))
+    return bool(os.environ.get("SMTP_HOST") and os.environ.get("SMTP_USER") and os.environ.get("SMTP_PASSWORD"))
+
+
+def send_password_reset_via_resend(to_email: str, reset_link: str):
+    api_key = os.environ.get("RESEND_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("RESEND_API_KEY is not configured")
+    from_header = email_from_header()
+    if not from_header:
+        raise RuntimeError("EMAIL_FROM or SMTP_FROM is required for Resend")
+    resp = requests.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={
+            "from": from_header,
+            "to": [to_email],
+            "subject": "Şifre sıfırlama talebi",
+            "text": password_reset_email_body(reset_link),
+        },
+        timeout=env_int("MAIL_TIMEOUT_SECONDS", 10),
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Resend email failed: {resp.status_code} {resp.text[:300]}")
+
+
+def send_password_reset_via_sendgrid(to_email: str, reset_link: str):
+    api_key = os.environ.get("SENDGRID_API_KEY", "").strip()
+    from_email = (os.environ.get("EMAIL_FROM") or os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER", "")).strip()
+    from_name = os.environ.get("EMAIL_FROM_NAME", os.environ.get("SMTP_FROM_NAME", "Stok Takip")).strip()
+    if not api_key:
+        raise RuntimeError("SENDGRID_API_KEY is not configured")
+    if not from_email:
+        raise RuntimeError("EMAIL_FROM or SMTP_FROM is required for SendGrid")
+    resp = requests.post(
+        "https://api.sendgrid.com/v3/mail/send",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={
+            "personalizations": [{"to": [{"email": to_email}]}],
+            "from": {"email": from_email, "name": from_name or "Stok Takip"},
+            "subject": "Şifre sıfırlama talebi",
+            "content": [{"type": "text/plain", "value": password_reset_email_body(reset_link)}],
+        },
+        timeout=env_int("MAIL_TIMEOUT_SECONDS", 10),
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"SendGrid email failed: {resp.status_code} {resp.text[:300]}")
+
+
+def send_password_reset_via_smtp(to_email: str, reset_link: str):
     host = os.environ.get("SMTP_HOST", "").strip()
     username = os.environ.get("SMTP_USER", "").strip()
     password = os.environ.get("SMTP_PASSWORD", "")
-    from_email = os.environ.get("SMTP_FROM", username).strip()
-    from_name = os.environ.get("SMTP_FROM_NAME", "Stok Takip").strip()
-    port = int(os.environ.get("SMTP_PORT", "587"))
+    from_header = email_from_header()
+    port = env_int("SMTP_PORT", 587)
+    timeout = env_int("MAIL_TIMEOUT_SECONDS", 10)
 
-    if not host or not username or not password or not from_email:
+    if not host or not username or not password or not from_header:
         raise RuntimeError("SMTP configuration is incomplete")
 
     msg = EmailMessage()
-    msg["Subject"] = "Password reset request"
-    msg["From"] = f"{from_name} <{from_email}>" if from_name else from_email
+    msg["Subject"] = "Şifre sıfırlama talebi"
+    msg["From"] = from_header
     msg["To"] = to_email
-    msg.set_content(
-        "Hello,\n\n"
-        "Use the link below to reset your password. This link expires in 1 hour.\n\n"
-        f"{reset_link}\n\n"
-        "If you did not request a password reset, you can ignore this email.\n"
-    )
+    msg.set_content(password_reset_email_body(reset_link))
 
     context = ssl.create_default_context()
     if env_bool("SMTP_SSL", False):
-        with smtplib.SMTP_SSL(host, port, context=context, timeout=30) as smtp:
+        with smtplib.SMTP_SSL(host, port, context=context, timeout=timeout) as smtp:
             smtp.login(username, password)
             smtp.send_message(msg)
         return
 
-    with smtplib.SMTP(host, port, timeout=30) as smtp:
+    with smtplib.SMTP(host, port, timeout=timeout) as smtp:
         smtp.ehlo()
         if env_bool("SMTP_TLS", True):
             smtp.starttls(context=context)
-            smtp.ehlo()
+        smtp.ehlo()
         smtp.login(username, password)
         smtp.send_message(msg)
+
+
+def send_password_reset_email(to_email: str, reset_link: str):
+    provider = os.environ.get("EMAIL_PROVIDER", "").strip().lower()
+    if provider == "resend" or (not provider and os.environ.get("RESEND_API_KEY")):
+        send_password_reset_via_resend(to_email, reset_link)
+        return
+    if provider == "sendgrid" or (not provider and os.environ.get("SENDGRID_API_KEY")):
+        send_password_reset_via_sendgrid(to_email, reset_link)
+        return
+    send_password_reset_via_smtp(to_email, reset_link)
 
 
 # ----- Models -----
@@ -539,6 +629,7 @@ async def forgot_password(payload: ForgotPasswordIn):
     user = await db.users.find_one({"email": email})
     # Always return success to avoid email enumeration
     if user:
+        dev_link_enabled = env_bool("PASSWORD_RESET_DEV_LINK", False)
         token = secrets.token_urlsafe(32)
         await db.password_reset_tokens.insert_one({
             "token": token,
@@ -550,15 +641,23 @@ async def forgot_password(payload: ForgotPasswordIn):
         })
         frontend = os.environ.get("FRONTEND_URL", "").rstrip("/")
         reset_link = f"{frontend}/reset-password?token={token}" if frontend else f"/reset-password?token={token}"
+
+        response = {"ok": True, "message": "Şifre sıfırlama maili gönderildi"}
+        if dev_link_enabled:
+            response.update({"dev_token": token, "dev_link": reset_link})
+
+        if not has_email_configuration():
+            if dev_link_enabled:
+                logger.warning(f"[PASSWORD RESET DEV LINK] {email}: {reset_link}")
+                return response
+            logger.error("Password reset email configuration is missing")
+            raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış")
+
         try:
-            send_password_reset_email(email, reset_link)
+            await asyncio.to_thread(send_password_reset_email, email, reset_link)
         except Exception as exc:
             logger.error(f"Password reset email failed for {email}: {exc}")
             raise HTTPException(status_code=500, detail="Şifre sıfırlama e-postası gönderilemedi")
-
-        response = {"ok": True, "message": "Şifre sıfırlama maili gönderildi"}
-        if env_bool("PASSWORD_RESET_DEV_LINK", False):
-            response.update({"dev_token": token, "dev_link": reset_link})
         return response
     return {"ok": True, "message": "Şifre sıfırlama maili gönderildi"}
 
