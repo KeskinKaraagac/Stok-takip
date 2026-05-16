@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, FileSpreadsheet } from "lucide-react";
+import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -41,6 +41,7 @@ export default function Reports() {
   const [sales, setSales] = useState(null);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const [activeTab, setActiveTab] = useState("stock");
 
   const loadStatic = async () => {
     try {
@@ -88,12 +89,28 @@ export default function Reports() {
     ]);
   };
 
+  const printReport = () => {
+    const titles = {
+      stock: t("current_stock_report"),
+      financial: t("financial_report"),
+      distribution: t("distribution_report"),
+      production: t("production_report"),
+      sales: t("sales_report"),
+    };
+    const originalTitle = document.title;
+    document.title = `${t("reports")} - ${titles[activeTab] || ""}`;
+    window.print();
+    window.setTimeout(() => {
+      document.title = originalTitle;
+    }, 250);
+  };
+
   return (
-    <div data-testid="reports-page" className="animate-fadeIn">
+    <div id="report-print-area" data-testid="reports-page" className="animate-fadeIn">
       <PageHeader title={t("reports")} subtitle={t("reports_subtitle")} />
 
-      <Tabs defaultValue="stock">
-        <TabsList className="rounded-sm">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="rounded-sm report-print-hide">
           <TabsTrigger value="stock" data-testid="tab-stock-report">{t("current_stock_report")}</TabsTrigger>
           <TabsTrigger value="financial" data-testid="tab-financial">{t("financial_report")}</TabsTrigger>
           <TabsTrigger value="distribution" data-testid="tab-distribution">{t("distribution_report")}</TabsTrigger>
@@ -126,13 +143,14 @@ export default function Reports() {
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 mb-3">
+              <div className="flex justify-end gap-2 mb-3 report-print-hide">
                 <Button variant="outline" onClick={exportStock} className="rounded-sm">
                   <Download className="w-4 h-4 mr-2" /> {t("csv")}
                 </Button>
                 <Button variant="outline" onClick={() => downloadXlsx("/export/stock.xlsx", "stok-raporu.xlsx").catch((e) => toast.error(formatApiError(e)))} className="rounded-sm">
                   <FileSpreadsheet className="w-4 h-4 mr-2" /> {t("excel")}
                 </Button>
+                <PdfButton onClick={printReport} t={t} />
               </div>
               <div className="border border-slate-200 rounded-sm overflow-x-auto bg-white">
                 <table className="dense w-full">
@@ -167,6 +185,9 @@ export default function Reports() {
         <TabsContent value="financial" className="mt-4">
           {stock && (
             <>
+              <div className="flex justify-end mb-3 report-print-hide">
+                <PdfButton onClick={printReport} t={t} />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <SummaryCard label={t("total_stock_fin_value")} value={formatCurrency(stock.total_cost_value)} accent />
                 <SummaryCard label={t("potential_sale_value")} value={formatCurrency(stock.total_sale_value)} />
@@ -216,6 +237,9 @@ export default function Reports() {
 
         {/* ===== DISTRIBUTION ===== */}
         <TabsContent value="distribution" className="mt-4">
+          <div className="flex justify-end mb-3 report-print-hide">
+            <PdfButton onClick={printReport} t={t} />
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="border border-slate-200 rounded-sm p-5 bg-white">
               <h3 className="text-lg font-display font-medium mb-3">{t("category_stock_dist")}</h3>
@@ -258,7 +282,10 @@ export default function Reports() {
 
         {/* ===== PRODUCTION ===== */}
         <TabsContent value="production" className="mt-4">
-          <DateRangeFilter start={start} end={end} setStart={setStart} setEnd={setEnd} t={t} />
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3 report-print-hide">
+            <DateRangeFilter start={start} end={end} setStart={setStart} setEnd={setEnd} t={t} />
+            <PdfButton onClick={printReport} t={t} />
+          </div>
           {prod && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
@@ -314,7 +341,10 @@ export default function Reports() {
 
         {/* ===== SALES (Depo Çıkış) ===== */}
         <TabsContent value="sales" className="mt-4">
-          <DateRangeFilter start={start} end={end} setStart={setStart} setEnd={setEnd} t={t} />
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3 report-print-hide">
+            <DateRangeFilter start={start} end={end} setStart={setStart} setEnd={setEnd} t={t} />
+            <PdfButton onClick={printReport} t={t} />
+          </div>
           {sales && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-4">
@@ -397,10 +427,18 @@ export default function Reports() {
 
 function SummaryCard({ label, value, accent }) {
   return (
-    <div className="border border-slate-200 bg-white p-5 rounded-sm transition-all hover:shadow-md hover:border-[#0047AB]/30">
+    <div className="report-card border border-slate-200 bg-white p-5 rounded-sm transition-all hover:shadow-md hover:border-[#0047AB]/30">
       <div className="text-xs uppercase tracking-[0.1em] font-bold text-slate-500 mb-2">{label}</div>
       <div className={`kpi-value text-3xl tabular ${accent ? "text-[#0047AB]" : "text-slate-900"}`}>{value}</div>
     </div>
+  );
+}
+
+function PdfButton({ onClick, t }) {
+  return (
+    <Button variant="outline" onClick={onClick} className="rounded-sm">
+      <FileText className="w-4 h-4 mr-2" /> {t("print_pdf")}
+    </Button>
   );
 }
 

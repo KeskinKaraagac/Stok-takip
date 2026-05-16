@@ -1,16 +1,19 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import api from "../lib/api";
 import { formatApiError } from "../lib/format";
+import { useLanguage } from "./LanguageContext";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   // null = checking, false = unauthenticated, object = user
   const [user, setUser] = useState(null);
+  const { setLang } = useLanguage();
 
   const fetchMe = async () => {
     try {
       const { data } = await api.get("/auth/me");
+      setLang(data.language || "en");
       setUser(data);
     } catch {
       setUser(false);
@@ -24,6 +27,7 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
     if (data.access_token) localStorage.setItem("access_token", data.access_token);
+    setLang(data.user?.language || "en");
     setUser(data.user);
     return data.user;
   };
@@ -31,6 +35,7 @@ export function AuthProvider({ children }) {
   const register = async (payload) => {
     const { data } = await api.post("/auth/register", payload);
     if (data.access_token) localStorage.setItem("access_token", data.access_token);
+    setLang(data.user?.language || "en");
     setUser(data.user);
     return data.user;
   };

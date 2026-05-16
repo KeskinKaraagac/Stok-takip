@@ -9,10 +9,13 @@ import io
 import uuid
 import secrets
 import logging
+import smtplib
+import ssl
 import bcrypt
 import requests
 import jwt as pyjwt
 from datetime import datetime, timezone, timedelta, date
+from email.message import EmailMessage
 from typing import List, Optional, Literal
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Query, UploadFile, File
@@ -228,6 +231,51 @@ def create_token(sub: str, email: str, role: str, kind: str, minutes: int = 60 *
     return pyjwt.encode(payload, os.environ["JWT_SECRET"], algorithm=JWT_ALGORITHM)
 
 
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def send_password_reset_email(to_email: str, reset_link: str):
+    host = os.environ.get("SMTP_HOST", "").strip()
+    username = os.environ.get("SMTP_USER", "").strip()
+    password = os.environ.get("SMTP_PASSWORD", "")
+    from_email = os.environ.get("SMTP_FROM", username).strip()
+    from_name = os.environ.get("SMTP_FROM_NAME", "Stok Takip").strip()
+    port = int(os.environ.get("SMTP_PORT", "587"))
+
+    if not host or not username or not password or not from_email:
+        raise RuntimeError("SMTP configuration is incomplete")
+
+    msg = EmailMessage()
+    msg["Subject"] = "Password reset request"
+    msg["From"] = f"{from_name} <{from_email}>" if from_name else from_email
+    msg["To"] = to_email
+    msg.set_content(
+        "Hello,\n\n"
+        "Use the link below to reset your password. This link expires in 1 hour.\n\n"
+        f"{reset_link}\n\n"
+        "If you did not request a password reset, you can ignore this email.\n"
+    )
+
+    context = ssl.create_default_context()
+    if env_bool("SMTP_SSL", False):
+        with smtplib.SMTP_SSL(host, port, context=context, timeout=30) as smtp:
+            smtp.login(username, password)
+            smtp.send_message(msg)
+        return
+
+    with smtplib.SMTP(host, port, timeout=30) as smtp:
+        smtp.ehlo()
+        if env_bool("SMTP_TLS", True):
+            smtp.starttls(context=context)
+            smtp.ehlo()
+        smtp.login(username, password)
+        smtp.send_message(msg)
+
+
 # ----- Models -----
 class UserPublic(BaseModel):
     id: str
@@ -244,6 +292,14 @@ class RegisterIn(BaseModel):
     name: str = Field(min_length=1)
     role: Optional[str] = ROLE_STAFF
     language: Optional[Literal["en", "tr"]] = "en"
+
+
+class UserCreateIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6)
+    name: str = Field(min_length=1)
+    role: Literal["admin", "personel", "rapor"] = ROLE_STAFF
+    language: Literal["en", "tr"] = "en"
 
 
 class LoginIn(BaseModel):
@@ -492,12 +548,19 @@ async def forgot_password(payload: ForgotPasswordIn):
             "used": False,
             "created_at": now_utc(),
         })
-        frontend = os.environ.get("FRONTEND_URL", "")
+        frontend = os.environ.get("FRONTEND_URL", "").rstrip("/")
         reset_link = f"{frontend}/reset-password?token={token}" if frontend else f"/reset-password?token={token}"
-        # In production this would be emailed. For now we log + return token in dev mode.
-        logger.info(f"[PASSWORD RESET] {email}: {reset_link}")
-        return {"ok": True, "message": "Şifre sıfırlama bağlantısı gönderildi", "dev_token": token, "dev_link": reset_link}
-    return {"ok": True, "message": "Şifre sıfırlama bağlantısı gönderildi"}
+        try:
+            send_password_reset_email(email, reset_link)
+        except Exception as exc:
+            logger.error(f"Password reset email failed for {email}: {exc}")
+            raise HTTPException(status_code=500, detail="Şifre sıfırlama e-postası gönderilemedi")
+
+        response = {"ok": True, "message": "Şifre sıfırlama maili gönderildi"}
+        if env_bool("PASSWORD_RESET_DEV_LINK", False):
+            response.update({"dev_token": token, "dev_link": reset_link})
+        return response
+    return {"ok": True, "message": "Şifre sıfırlama maili gönderildi"}
 
 
 @api.post("/auth/reset-password")
@@ -1586,7 +1649,7 @@ async def report_sales(start: Optional[str] = None, end: Optional[str] = None, u
 
 # ===== USERS (admin) =====
 @api.get("/users")
-async def list_users(user: dict = Depends(require_permission("users.manage"))):
+async def list_users(user: dict = Depends(require_roles(ROLE_ADMIN))):
     docs = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
     for u in docs:
         if u.get("permissions") is None:
@@ -1594,8 +1657,32 @@ async def list_users(user: dict = Depends(require_permission("users.manage"))):
     return docs
 
 
+@api.post("/users")
+async def create_user(payload: UserCreateIn, user: dict = Depends(require_roles(ROLE_ADMIN))):
+    email = payload.email.lower().strip()
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Bu e-posta zaten kayıtlı")
+    role = payload.role if payload.role in ALL_ROLES else ROLE_STAFF
+    new_user = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "name": payload.name.strip(),
+        "role": role,
+        "active": True,
+        "language": payload.language or "en",
+        "permissions": default_permissions(role),
+        "password_hash": hash_password(payload.password),
+        "created_at": now_utc().isoformat(),
+    }
+    await db.users.insert_one(new_user)
+    new_user.pop("password_hash", None)
+    new_user.pop("_id", None)
+    return new_user
+
+
 @api.put("/users/{uid}")
-async def update_user(uid: str, payload: dict, user: dict = Depends(require_permission("users.manage"))):
+async def update_user(uid: str, payload: dict, user: dict = Depends(require_roles(ROLE_ADMIN))):
     allowed = {k: v for k, v in payload.items() if k in ["name", "email", "role", "active", "permissions"]}
     if "email" in allowed:
         em = (allowed["email"] or "").lower().strip()
@@ -1627,7 +1714,7 @@ async def update_user(uid: str, payload: dict, user: dict = Depends(require_perm
 
 
 @api.delete("/users/{uid}")
-async def delete_user(uid: str, user: dict = Depends(require_permission("users.manage"))):
+async def delete_user(uid: str, user: dict = Depends(require_roles(ROLE_ADMIN))):
     if uid == user["id"]:
         raise HTTPException(status_code=400, detail="Kendi hesabınızı silemezsiniz")
     res = await db.users.delete_one({"id": uid})

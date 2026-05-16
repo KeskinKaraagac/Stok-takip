@@ -11,6 +11,7 @@ const TRANSLATIONS = {
     stock: "Stok Durumu",
     reports: "Raporlar",
     settings: "Ayarlar",
+    mySettings: "Ayarlarım",
     logout: "Çıkış Yap",
 
     // ===== Common =====
@@ -25,6 +26,8 @@ const TRANSLATIONS = {
     export: "Dışa Aktar",
     excel: "Excel",
     csv: "CSV",
+    pdf: "PDF",
+    print_pdf: "PDF Çıktısı",
     confirm: "Onayla",
     yes: "Evet",
     no: "Hayır",
@@ -265,7 +268,12 @@ const TRANSLATIONS = {
     toast_perms_updated: "İzinler güncellendi",
     toast_user_deleted: "Kullanıcı silindi",
     toast_user_updated: "Kullanıcı güncellendi",
+    toast_user_created: "Kullanıcı eklendi",
     toast_profile_updated: "Profil güncellendi",
+    add_user: "Kullanıcı Ekle",
+    create_user: "Kullanıcı Oluştur",
+    password: "Şifre",
+    user_required: "Ad, e-posta ve şifre zorunludur",
     user_management_desc: "Her kullanıcının modül bazlı yetkilerini ayrı ayrı düzenleyebilirsiniz.",
     registered: "Kayıt",
     role_admin: "Yönetici",
@@ -287,6 +295,7 @@ const TRANSLATIONS = {
     stock: "Stock Status",
     reports: "Reports",
     settings: "Settings",
+    mySettings: "My Settings",
     logout: "Logout",
 
     save: "Save",
@@ -300,6 +309,8 @@ const TRANSLATIONS = {
     export: "Export",
     excel: "Excel",
     csv: "CSV",
+    pdf: "PDF",
+    print_pdf: "Print PDF",
     confirm: "Confirm",
     yes: "Yes",
     no: "No",
@@ -531,7 +542,12 @@ const TRANSLATIONS = {
     toast_perms_updated: "Permissions updated",
     toast_user_deleted: "User deleted",
     toast_user_updated: "User updated",
+    toast_user_created: "User created",
     toast_profile_updated: "Profile updated",
+    add_user: "Add User",
+    create_user: "Create User",
+    password: "Password",
+    user_required: "Name, email and password are required",
     user_management_desc: "Edit each user's module-level permissions individually.",
     registered: "Registered",
     role_admin: "Administrator",
@@ -549,15 +565,16 @@ const TRANSLATIONS = {
 const LanguageContext = createContext(null);
 
 export function LanguageProvider({ children }) {
-  const [lang, setLang] = useState(() => localStorage.getItem("lang") || "tr");
+  const [lang, setLang] = useState(() => localStorage.getItem("lang") || localStorage.getItem("language") || "en");
 
   useEffect(() => {
     localStorage.setItem("lang", lang);
+    localStorage.setItem("language", lang);
     document.documentElement.lang = lang;
   }, [lang]);
 
   const t = (key) => {
-    const dict = TRANSLATIONS[lang] || TRANSLATIONS.tr;
+    const dict = TRANSLATIONS[lang] || TRANSLATIONS.en;
     return dict[key] ?? TRANSLATIONS.tr[key] ?? key;
   };
 

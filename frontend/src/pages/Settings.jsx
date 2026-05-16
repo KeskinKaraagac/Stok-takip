@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ShieldCheck, KeyRound, Upload, Trash2, Building2 } from "lucide-react";
+import { ShieldCheck, KeyRound, Upload, Trash2, Building2, Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -42,6 +42,8 @@ export default function Settings() {
   // User editor (admin editing other users)
   const [userEdit, setUserEdit] = useState(null);
   const [userForm, setUserForm] = useState({ name: "", email: "", role: "", password: "" });
+  const [userCreateOpen, setUserCreateOpen] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({ name: "", email: "", role: "personel", language: "en", password: "" });
 
   useEffect(() => {
     setCompanyForm({
@@ -170,6 +172,31 @@ export default function Settings() {
     setUserEdit(u);
     setUserForm({ name: u.name || "", email: u.email || "", role: u.role, password: "" });
   };
+
+  const openUserCreate = () => {
+    setNewUserForm({ name: "", email: "", role: "personel", language: "en", password: "" });
+    setUserCreateOpen(true);
+  };
+
+  const saveUserCreate = async () => {
+    if (!newUserForm.name.trim() || !newUserForm.email.trim() || !newUserForm.password) {
+      toast.error(t("user_required"));
+      return;
+    }
+    try {
+      await api.post("/users", {
+        name: newUserForm.name,
+        email: newUserForm.email,
+        role: newUserForm.role,
+        language: newUserForm.language,
+        password: newUserForm.password,
+      });
+      toast.success(t("toast_user_created"));
+      setUserCreateOpen(false);
+      load();
+    } catch (e) { toast.error(formatApiError(e)); }
+  };
+
   const saveUserEdit = async () => {
     try {
       const body = { name: userForm.name, email: userForm.email, role: userForm.role };
@@ -295,9 +322,14 @@ export default function Settings() {
       </div>
 
       <div className="border border-slate-200 rounded-sm bg-white overflow-x-auto" data-testid="users-table">
-        <div className="p-5 border-b border-slate-200">
-          <h3 className="text-lg font-display font-medium">{t("user_management")}</h3>
-          <p className="text-sm text-slate-500">{t("user_management_desc")}</p>
+        <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div>
+            <h3 className="text-lg font-display font-medium">{t("user_management")}</h3>
+            <p className="text-sm text-slate-500">{t("user_management_desc")}</p>
+          </div>
+          <Button onClick={openUserCreate} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm sm:ml-auto" data-testid="add-user-btn">
+            <Plus className="w-4 h-4 mr-2" /> {t("add_user")}
+          </Button>
         </div>
         <table className="dense w-full">
           <thead><tr>
@@ -398,6 +430,51 @@ export default function Settings() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setPermDialog(null)} className="rounded-sm">{t("cancel")}</Button>
             <Button onClick={savePerms} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm" data-testid="save-perms-btn">{t("save")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={userCreateOpen} onOpenChange={setUserCreateOpen}>
+        <DialogContent className="rounded-sm max-w-md" data-testid="user-create-dialog">
+          <DialogHeader><DialogTitle>{t("create_user")}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("name")}</Label>
+              <Input value={newUserForm.name} onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })} className="rounded-sm mt-1" data-testid="user-create-name" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("email")}</Label>
+              <Input type="email" value={newUserForm.email} onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })} className="rounded-sm mt-1" data-testid="user-create-email" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("role")}</Label>
+              <Select value={newUserForm.role} onValueChange={(v) => setNewUserForm({ ...newUserForm, role: v })}>
+                <SelectTrigger className="rounded-sm mt-1" data-testid="user-create-role"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">{t("role_admin")}</SelectItem>
+                  <SelectItem value="personel">{t("role_personel")}</SelectItem>
+                  <SelectItem value="rapor">{t("role_rapor")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("language")}</Label>
+              <Select value={newUserForm.language} onValueChange={(v) => setNewUserForm({ ...newUserForm, language: v })}>
+                <SelectTrigger className="rounded-sm mt-1" data-testid="user-create-language"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="en">English</SelectItem>
+                  <SelectItem value="tr">Türkçe</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-slate-500">{t("password")}</Label>
+              <Input type="password" value={newUserForm.password} onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })} className="rounded-sm mt-1" data-testid="user-create-password" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUserCreateOpen(false)} className="rounded-sm">{t("cancel")}</Button>
+            <Button onClick={saveUserCreate} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm" data-testid="save-user-create-btn">{t("save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
