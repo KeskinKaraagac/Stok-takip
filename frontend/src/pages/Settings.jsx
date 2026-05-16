@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ShieldCheck, KeyRound, Upload, Trash2, Building2, Plus, BellRing } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -61,14 +61,14 @@ export default function Settings() {
     if (user) setProfileForm({ name: user.name || "", email: user.email || "", current_password: "", new_password: "" });
   }, [user]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const [u, p] = await Promise.all([api.get("/users"), api.get("/permissions")]);
       setUsers(u.data);
       setPermGroups(p.data.groups || []);
     } catch (e) { toast.error(formatApiError(e)); }
-  };
-  useEffect(() => { load(); }, []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const updateField = async (id, field, value) => {
     try {

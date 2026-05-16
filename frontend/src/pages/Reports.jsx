@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -43,13 +43,13 @@ export default function Reports() {
   const [end, setEnd] = useState("");
   const [activeTab, setActiveTab] = useState("stock");
 
-  const loadStatic = async () => {
+  const loadStatic = useCallback(async () => {
     try {
       const [s, c] = await Promise.all([api.get("/reports/stock"), api.get("/reports/category-distribution")]);
       setStock(s.data); setCats(c.data);
     } catch (e) { toast.error(formatApiError(e)); }
-  };
-  const loadDynamic = async () => {
+  }, []);
+  const loadDynamic = useCallback(async () => {
     try {
       const params = {};
       if (start) params.start = start;
@@ -60,11 +60,11 @@ export default function Reports() {
       ]);
       setProd(p.data); setSales(s.data);
     } catch (e) { toast.error(formatApiError(e)); }
-  };
-  useEffect(() => { loadStatic(); }, []);
-  useEffect(() => { loadDynamic(); /* eslint-disable-next-line */ }, [start, end]);
+  }, [start, end]);
+  useEffect(() => { loadStatic(); }, [loadStatic]);
+  useEffect(() => { loadDynamic(); }, [loadDynamic]);
 
-  const stockRows = stock?.rows || [];
+  const stockRows = useMemo(() => stock?.rows || [], [stock]);
 
   // Category breakdown for stock tab header
   const stockCategorySummary = useMemo(() => {

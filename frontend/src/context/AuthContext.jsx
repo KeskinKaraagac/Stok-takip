@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import api from "../lib/api";
 import { formatApiError } from "../lib/format";
 import { useLanguage } from "./LanguageContext";
@@ -10,7 +10,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const { setLang } = useLanguage();
 
-  const fetchMe = async () => {
+  const fetchMe = useCallback(async () => {
     try {
       const { data } = await api.get("/auth/me");
       setLang(data.language || "en");
@@ -18,11 +18,11 @@ export function AuthProvider({ children }) {
     } catch {
       setUser(false);
     }
-  };
+  }, [setLang]);
 
   useEffect(() => {
     fetchMe();
-  }, []);
+  }, [fetchMe]);
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });

@@ -1715,11 +1715,13 @@ app.include_router(api)
 cors_origins = [origin.strip() for origin in os.environ.get("CORS_ORIGINS", "*").split(",") if origin.strip()]
 if not cors_origins:
     cors_origins = ["*"]
+cors_origin_regex = os.environ.get("CORS_ORIGIN_REGEX", r"https://.*\.vercel\.app").strip() or None
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
     allow_methods=["*"],
     allow_headers=["*"],
 )

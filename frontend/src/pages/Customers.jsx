@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { Plus, Search, Pencil, Trash2, Eye } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -35,13 +35,13 @@ export default function Customers() {
   const [confirmDel, setConfirmDel] = useState(null);
   const [detail, setDetail] = useState(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const { data } = await api.get("/customers");
       setItems(data);
     } catch (e) { toast.error(formatApiError(e)); }
-  };
-  useEffect(() => { load(); }, []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => {
     return items.filter((c) => {
