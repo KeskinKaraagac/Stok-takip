@@ -20,7 +20,7 @@ export default function ForgotPassword() {
     try {
       const { data } = await api.post("/auth/forgot-password", { email });
       setDone(data);
-      toast.success("Şifre sıfırlama bağlantısı oluşturuldu");
+      toast.success("Şifre talebiniz yöneticiye iletildi");
     } catch (err) {
       toast.error(formatApiError(err));
     } finally {
@@ -38,21 +38,13 @@ export default function ForgotPassword() {
           <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mt-1">Şifre Sıfırlama</p>
         </div>
         <h2 className="text-2xl font-display font-semibold text-slate-900 mb-1">Şifremi Unuttum</h2>
-        <p className="text-sm text-slate-500 mb-6">E-postanızı girin, size sıfırlama bağlantısı oluşturalım.</p>
+        <p className="text-sm text-slate-500 mb-6">E-postanızı girin, yöneticinize şifre yenileme talebi iletelim.</p>
 
         {done ? (
           <div className="space-y-4" data-testid="forgot-success">
             <div className="border border-emerald-200 bg-emerald-50 text-emerald-800 p-4 text-sm rounded-sm">
               {done.message}
             </div>
-            {done.dev_link && (
-              <div className="border border-slate-200 p-3 rounded-sm text-xs">
-                <div className="text-slate-500 uppercase tracking-wider mb-2">Geliştirme: Sıfırlama Bağlantısı</div>
-                <Link to={`/reset-password?token=${done.dev_token}`} className="text-[#0047AB] hover:underline break-all" data-testid="dev-reset-link">
-                  Sıfırlama sayfasına git
-                </Link>
-              </div>
-            )}
             <Link to="/login" className="block text-center text-sm text-slate-500 hover:text-[#0047AB]">Giriş sayfasına dön</Link>
           </div>
         ) : (
@@ -71,7 +63,7 @@ export default function ForgotPassword() {
               />
             </div>
             <Button type="submit" disabled={loading} data-testid="forgot-submit-button" className="w-full bg-[#0047AB] hover:bg-[#003380] rounded-sm">
-              {loading ? "Gönderiliyor..." : "Sıfırlama Bağlantısı Oluştur"}
+              {loading ? "Gönderiliyor..." : "Şifre Talebi Gönder"}
             </Button>
             <div className="text-center text-sm">
               <Link to="/login" className="text-slate-500 hover:text-[#0047AB]">Giriş sayfasına dön</Link>

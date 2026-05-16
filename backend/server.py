@@ -491,25 +491,24 @@ async def forgot_password(payload: ForgotPasswordIn):
     user = await db.users.find_one({"email": email})
     # Always return success to avoid email enumeration
     if user:
+        created_at = now_utc()
         token = secrets.token_urlsafe(32)
+        await db.password_reset_tokens.update_many(
+            {"user_id": user["id"], "used": False},
+            {"$set": {"used": True, "superseded_at": created_at}},
+        )
         await db.password_reset_tokens.insert_one({
             "token": token,
             "user_id": user["id"],
             "email": email,
-            "expires_at": now_utc() + timedelta(hours=1),
+            "expires_at": created_at + timedelta(days=7),
             "used": False,
-            "created_at": now_utc(),
+            "admin_request": True,
+            "request_status": "pending",
+            "created_at": created_at,
         })
-        frontend = os.environ.get("FRONTEND_URL", "").rstrip("/")
-        reset_link = f"{frontend}/reset-password?token={token}" if frontend else f"/reset-password?token={token}"
-        logger.info(f"[PASSWORD RESET] {email}: {reset_link}")
-        return {
-            "ok": True,
-            "message": "Şifre sıfırlama bağlantısı oluşturuldu",
-            "dev_token": token,
-            "dev_link": reset_link,
-        }
-    return {"ok": True, "message": "Şifre sıfırlama bağlantısı oluşturuldu"}
+        logger.info(f"[PASSWORD RESET REQUEST] {email} requested an admin password reset")
+    return {"ok": True, "message": "Şifre talebiniz yöneticiye iletildi"}
 
 
 @api.post("/auth/reset-password")
@@ -1600,9 +1599,22 @@ async def report_sales(start: Optional[str] = None, end: Optional[str] = None, u
 @api.get("/users")
 async def list_users(user: dict = Depends(require_roles(ROLE_ADMIN))):
     docs = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
+    user_ids = [u["id"] for u in docs]
+    pending = await db.password_reset_tokens.find(
+        {"user_id": {"$in": user_ids}, "used": False, "admin_request": True},
+        {"_id": 0, "user_id": 1, "created_at": 1},
+    ).sort("created_at", -1).to_list(1000)
+    reset_requests = {}
+    for rec in pending:
+        reset_requests.setdefault(rec["user_id"], rec.get("created_at"))
     for u in docs:
         if u.get("permissions") is None:
             u["permissions"] = default_permissions(u.get("role", ""))
+        if u["id"] in reset_requests:
+            u["password_reset_requested"] = True
+            u["password_reset_requested_at"] = reset_requests[u["id"]]
+        else:
+            u["password_reset_requested"] = False
     return docs
 
 
@@ -1633,6 +1645,7 @@ async def create_user(payload: UserCreateIn, user: dict = Depends(require_roles(
 @api.put("/users/{uid}")
 async def update_user(uid: str, payload: dict, user: dict = Depends(require_roles(ROLE_ADMIN))):
     allowed = {k: v for k, v in payload.items() if k in ["name", "email", "role", "active", "permissions"]}
+    password_changed = False
     if "email" in allowed:
         em = (allowed["email"] or "").lower().strip()
         if not em:
@@ -1653,12 +1666,30 @@ async def update_user(uid: str, payload: dict, user: dict = Depends(require_role
         if len(payload["password"]) < 6:
             raise HTTPException(status_code=400, detail="Şifre en az 6 karakter olmalı")
         allowed["password_hash"] = hash_password(payload["password"])
+        password_changed = True
     res = await db.users.update_one({"id": uid}, {"$set": allowed})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+    if password_changed:
+        await db.password_reset_tokens.update_many(
+            {"user_id": uid, "used": False},
+            {"$set": {
+                "used": True,
+                "used_at": now_utc(),
+                "request_status": "resolved",
+                "resolved_by": user["id"],
+            }},
+        )
     u = await db.users.find_one({"id": uid}, {"_id": 0, "password_hash": 0})
     if u.get("permissions") is None:
         u["permissions"] = default_permissions(u.get("role", ""))
+    pending_request = None if password_changed else await db.password_reset_tokens.find_one(
+        {"user_id": uid, "used": False, "admin_request": True},
+        {"_id": 0, "created_at": 1},
+    )
+    u["password_reset_requested"] = bool(pending_request)
+    if pending_request:
+        u["password_reset_requested_at"] = pending_request.get("created_at")
     return u
 
 
@@ -1711,6 +1742,7 @@ async def startup_event():
         await db.sales.create_index("id", unique=True)
         await db.stock_movements.create_index("id", unique=True)
         await db.company.create_index("id", unique=True)
+        await db.password_reset_tokens.create_index("user_id")
     except Exception as e:
         logger.warning(f"Index creation: {e}")
 

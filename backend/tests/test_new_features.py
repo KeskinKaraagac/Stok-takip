@@ -32,53 +32,49 @@ def temp_user():
 
 # ============= Password Reset Tests =============
 class TestForgotPassword:
-    def test_forgot_password_valid_email_returns_dev_token(self, temp_user):
+    def test_forgot_password_valid_email_creates_admin_request(self, temp_user, admin_headers):
         r = requests.post(f"{API}/auth/forgot-password", json={"email": temp_user["email"]})
         assert r.status_code == 200, r.text
         d = r.json()
         assert d.get("ok") is True
-        assert "dev_token" in d, f"dev_token missing: {d}"
-        assert isinstance(d["dev_token"], str) and len(d["dev_token"]) > 10
-        assert "dev_link" in d
-        assert "/reset-password?token=" in d["dev_link"]
-        temp_user["dev_token"] = d["dev_token"]
+        assert "dev_token" not in d, f"dev_token should not be exposed: {d}"
+        assert "dev_link" not in d, f"dev_link should not be exposed: {d}"
+
+        users = requests.get(f"{API}/users", headers=admin_headers)
+        assert users.status_code == 200, users.text
+        u = next((item for item in users.json() if item["id"] == temp_user["id"]), None)
+        assert u is not None
+        assert u.get("password_reset_requested") is True
+        assert u.get("password_reset_requested_at")
 
     def test_forgot_password_nonexistent_email_no_enumeration(self):
         r = requests.post(f"{API}/auth/forgot-password", json={"email": "nope_{}@example.com".format(uuid.uuid4().hex[:6])})
         assert r.status_code == 200
         d = r.json()
         assert d.get("ok") is True
-        # No enumeration: no dev_token returned for non-existent users
+        # No enumeration: response shape stays generic and no reset link leaks.
         assert "dev_token" not in d, f"dev_token leak: {d}"
+        assert "dev_link" not in d, f"dev_link leak: {d}"
 
     def test_forgot_password_invalid_email_format(self):
         r = requests.post(f"{API}/auth/forgot-password", json={"email": "not-an-email"})
         assert r.status_code == 422
 
 
-class TestResetPassword:
-    def test_reset_password_short_password_rejected(self, temp_user):
-        # Get a fresh token first
-        r = requests.post(f"{API}/auth/forgot-password", json={"email": temp_user["email"]})
-        token = r.json()["dev_token"]
-        # Too short
-        r2 = requests.post(f"{API}/auth/reset-password", json={"token": token, "password": "abc"})
-        assert r2.status_code == 422, r2.text
-        temp_user["short_test_token"] = token  # still unused
-
+class TestAdminPasswordResetRequest:
     def test_reset_password_invalid_token(self):
         r = requests.post(f"{API}/auth/reset-password", json={"token": "totallybogus_" + uuid.uuid4().hex, "password": "ValidPass123"})
         assert r.status_code == 400
         assert "Geçersiz token" in r.json().get("detail", "")
 
-    def test_reset_password_valid_token_updates_password(self, temp_user):
-        # Get a fresh token
+    def test_admin_sets_new_password_and_resolves_request(self, temp_user, admin_headers):
         r = requests.post(f"{API}/auth/forgot-password", json={"email": temp_user["email"]})
-        token = r.json()["dev_token"]
+        assert r.status_code == 200, r.text
+
         new_password = "BrandNewPw123!"
-        r2 = requests.post(f"{API}/auth/reset-password", json={"token": token, "password": new_password})
+        r2 = requests.put(f"{API}/users/{temp_user['id']}", json={"password": new_password}, headers=admin_headers)
         assert r2.status_code == 200, r2.text
-        assert r2.json().get("ok") is True
+        assert r2.json().get("password_reset_requested") is False
 
         # Verify login fails with OLD password
         r3 = requests.post(f"{API}/auth/login", json={"email": temp_user["email"], "password": temp_user["password"]})
@@ -89,14 +85,13 @@ class TestResetPassword:
         assert r4.status_code == 200, r4.text
         assert "access_token" in r4.json()
 
-        temp_user["used_token"] = token
-        temp_user["password"] = new_password
+        users = requests.get(f"{API}/users", headers=admin_headers)
+        assert users.status_code == 200, users.text
+        u = next((item for item in users.json() if item["id"] == temp_user["id"]), None)
+        assert u is not None
+        assert u.get("password_reset_requested") is False
 
-    def test_reset_password_already_used_token(self, temp_user):
-        assert "used_token" in temp_user, "Prior test must have run"
-        r = requests.post(f"{API}/auth/reset-password", json={"token": temp_user["used_token"], "password": "AnotherPw123"})
-        assert r.status_code == 400
-        assert "kullanılmış" in r.json().get("detail", "")
+        temp_user["password"] = new_password
 
 
 # ============= Sales Receipt PDF Tests =============

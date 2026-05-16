@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ShieldCheck, KeyRound, Upload, Trash2, Building2, Plus } from "lucide-react";
+import { ShieldCheck, KeyRound, Upload, Trash2, Building2, Plus, BellRing } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -26,6 +26,7 @@ export default function Settings() {
   const { t, lang, setLang } = useLanguage();
   const ROLE_LABEL = { admin: t("role_admin"), personel: t("role_personel"), rapor: t("role_rapor") };
   const [users, setUsers] = useState([]);
+  const passwordResetCount = users.filter((u) => u.password_reset_requested).length;
   const [confirmDel, setConfirmDel] = useState(null);
   const [permGroups, setPermGroups] = useState([]);
   const [permDialog, setPermDialog] = useState(null);
@@ -326,6 +327,12 @@ export default function Settings() {
           <div>
             <h3 className="text-lg font-display font-medium">{t("user_management")}</h3>
             <p className="text-sm text-slate-500">{t("user_management_desc")}</p>
+            {passwordResetCount > 0 && (
+              <div className="mt-3 inline-flex items-center gap-2 border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 rounded-sm" data-testid="password-reset-admin-alert">
+                <BellRing className="w-4 h-4" />
+                {passwordResetCount} {t("password_reset_requests")}
+              </div>
+            )}
           </div>
           <Button onClick={openUserCreate} className="bg-[#0047AB] hover:bg-[#003380] rounded-sm sm:ml-auto" data-testid="add-user-btn">
             <Plus className="w-4 h-4 mr-2" /> {t("add_user")}
@@ -344,7 +351,16 @@ export default function Settings() {
           <tbody>
             {users.map((u) => (
               <tr key={u.id} data-testid={`user-row-${u.id}`}>
-                <td className="font-medium">{u.name}</td>
+                <td className="font-medium">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{u.name}</span>
+                    {u.password_reset_requested && (
+                      <Badge className="rounded-sm border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-50" data-testid={`password-reset-badge-${u.id}`}>
+                        <BellRing className="w-3.5 h-3.5 mr-1" /> {t("password_reset_request")}
+                      </Badge>
+                    )}
+                  </div>
+                </td>
                 <td>{u.email}</td>
                 <td>
                   <Select value={u.role} onValueChange={(v) => updateField(u.id, "role", v)} disabled={u.id === user?.id || u.role === "admin"}>
@@ -369,7 +385,15 @@ export default function Settings() {
                 <td>{formatDateTime(u.created_at)}</td>
                 <td className="text-right whitespace-nowrap">
                   {u.id !== user?.id && (
-                    <Button variant="outline" size="sm" className="rounded-sm mr-2" onClick={() => openUserEdit(u)} data-testid={`edit-user-${u.id}`}>{t("edit")}</Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`rounded-sm mr-2 ${u.password_reset_requested ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100" : ""}`}
+                      onClick={() => openUserEdit(u)}
+                      data-testid={`edit-user-${u.id}`}
+                    >
+                      {u.password_reset_requested ? t("set_new_password") : t("edit")}
+                    </Button>
                   )}
                   {u.role !== "admin" && (
                     <Button variant="outline" size="sm" className="rounded-sm mr-2" onClick={() => openPerm(u)} data-testid={`edit-perms-${u.id}`}>
@@ -483,6 +507,15 @@ export default function Settings() {
         <DialogContent className="rounded-sm max-w-md" data-testid="user-edit-dialog">
           <DialogHeader><DialogTitle>{t("edit")} — {userEdit?.email}</DialogTitle></DialogHeader>
           <div className="space-y-3">
+            {userEdit?.password_reset_requested && (
+              <div className="flex gap-2 rounded-sm border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" data-testid="password-reset-dialog-alert">
+                <BellRing className="w-4 h-4 mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-medium">{t("password_request_notice")}</div>
+                  <div className="text-xs text-amber-800">{t("password_reset_requested_at")}: {formatDateTime(userEdit.password_reset_requested_at)}</div>
+                </div>
+              </div>
+            )}
             <div>
               <Label className="text-xs uppercase tracking-wider text-slate-500">{t("name")}</Label>
               <Input value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} className="rounded-sm mt-1" data-testid="user-edit-name" />
