@@ -20,7 +20,7 @@ export default function ForgotPassword() {
     try {
       const { data } = await api.post("/auth/forgot-password", { email });
       setDone(data);
-      toast.success("Şifre sıfırlama maili gönderildi");
+      toast.success("Şifre sıfırlama bağlantısı oluşturuldu");
     } catch (err) {
       toast.error(formatApiError(err));
     } finally {
